@@ -12,12 +12,19 @@ A lightweight, self-hosted **status page and service dashboard** configured enti
 
 ## Quick start
 
+> **Cloning a private repo.** This repository is private, so the LXC/host needs to authenticate to GitHub.
+> The simplest one-off method is a [Personal Access Token](https://github.com/settings/tokens) with `repo` scope:
+> ```bash
+> git clone https://<YOUR_TOKEN>@github.com/dagfinn2000/dashify.git
+> ```
+> Or set up an SSH key and use `git clone git@github.com:dagfinn2000/dashify.git`.
+
 ### Option A — Docker Compose (recommended)
 
 The simplest way. From the cloned repo:
 
 ```bash
-git clone https://github.com/<your-username>/dashify.git
+git clone https://github.com/dagfinn2000/dashify.git
 cd dashify
 docker compose up -d
 ```
@@ -29,7 +36,7 @@ Your `config/config.yaml` is bind-mounted into the container (`./config:/app/con
 ### Option B — Plain Docker
 
 ```bash
-git clone https://github.com/<your-username>/dashify.git
+git clone https://github.com/dagfinn2000/dashify.git
 cd dashify
 docker build -t dashify .
 docker run -d \
@@ -52,7 +59,7 @@ curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
 sudo apt-get install -y nodejs git
 
 # Clone and run
-git clone https://github.com/<your-username>/dashify.git
+git clone https://github.com/dagfinn2000/dashify.git
 cd dashify
 npm install --omit=dev
 npm start
