@@ -1,0 +1,76 @@
+# Dashify Configuration
+# Edit this file to customize your dashboard.
+# Changes are picked up automatically without restarting.
+
+title: "My Dashboard"
+subtitle: "Home Lab"       # optional subtitle shown below the title
+theme: dark                # dark | light
+refresh_interval: 30       # seconds between status re-checks (set to 0 to disable)
+columns: 3                 # number of service group columns (1-4)
+
+# Groups contain your services and quick links.
+# Each group appears as a card column on the dashboard.
+groups:
+  - name: "Media"
+    icon: "🎬"
+    services:
+      - name: "Jellyfin"
+        url: "http://192.168.1.100:8096"
+        icon: "🎞️"
+        description: "Media server"
+        check: true          # perform HTTP health check
+        check_path: "/health" # optional: override the path used for health checks
+
+      - name: "Plex"
+        url: "http://192.168.1.100:32400"
+        icon: "📺"
+        description: "Media server"
+        check: true
+
+      - name: "Navidrome"
+        url: "http://192.168.1.100:4533"
+        icon: "🎵"
+        description: "Music streaming"
+        check: true
+
+  - name: "Infrastructure"
+    icon: "🐳"
+    services:
+      - name: "Portainer"
+        url: "http://192.168.1.100:9000"
+        icon: "🐳"
+        description: "Container management"
+        check: true
+
+      - name: "Proxmox"
+        url: "https://192.168.1.10:8006"
+        icon: "🖥️"
+        description: "Hypervisor"
+        check: true
+
+      - name: "Grafana"
+        url: "http://192.168.1.100:3000"
+        icon: "📊"
+        description: "Metrics & dashboards"
+        check: true
+
+  - name: "Network"
+    icon: "🌐"
+    services:
+      - name: "AdGuard Home"
+        url: "http://192.168.1.1:3000"
+        icon: "🛡️"
+        description: "DNS ad blocker"
+        check: true
+
+      - name: "Nginx Proxy Manager"
+        url: "http://192.168.1.100:81"
+        icon: "🔀"
+        description: "Reverse proxy"
+        check: true
+
+      - name: "Uptime Kuma"
+        url: "http://192.168.1.100:3001"
+        icon: "📡"
+        description: "Uptime monitor"
+        check: true

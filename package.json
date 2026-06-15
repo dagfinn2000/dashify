@@ -1,0 +1,17 @@
+{
+  "name": "dashify",
+  "version": "1.0.0",
+  "description": "YAML-configured service dashboard and status page",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "js-yaml": "^4.1.0",
+    "node-fetch": "^3.3.2",
+    "chokidar": "^3.6.0"
+  }
+}

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashify</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="theme-dark">
+  <header>
+    <div class="header-inner">
+      <div class="header-text">
+        <h1 id="site-title">Dashify</h1>
+        <p id="site-subtitle"></p>
+      </div>
+      <div class="header-meta">
+        <span id="last-updated"></span>
+        <button id="refresh-btn" title="Refresh status">↻</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div id="groups-container"></div>
+  </main>
+
+  <footer>
+    <span>Dashify · Edit <code>config/config.yaml</code> to customize</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

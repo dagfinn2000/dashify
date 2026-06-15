@@ -1,0 +1,14 @@
+services:
+  dashify:
+    build: .
+    container_name: dashify
+    restart: unless-stopped
+    ports:
+      - "6969:6969"
+    volumes:
+      # Mount your config directory so edits are picked up live without rebuilding
+      - ./config:/app/config:ro
+    environment:
+      - PORT=6969
+      # Optional: set TZ for correct timestamps
+      # - TZ=Europe/Oslo
