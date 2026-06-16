@@ -3,10 +3,12 @@
 A lightweight, self-hosted **status page and service dashboard** configured entirely through a single YAML file — in the spirit of [Homepage](https://gethomepage.dev/) or [Glance](https://github.com/glanceapp/glance).
 
 - 🔗 Quick links to all your services, grouped into cards
-- 🟢 Live HTTP health checks with status dots (auto-refresh)
-- 🎨 Dark / light themes, customizable columns, icons, and descriptions
+- 🟢 Live HTTP health checks with status dots, response-time tooltips, and an at-a-glance "up" summary
+- 🔓 Optional self-signed TLS support for homelab boxes (Proxmox, NPM, …)
+- 🔎 Instant client-side filter (press `/`) and a one-click dark/light theme toggle that remembers your choice
+- 🎨 Dark / light / auto themes, customizable columns, icons, and descriptions
 - ⚙️ Edit `config/config.yaml` and changes apply **live** — no restart
-- 🐳 Runs in Docker or an LXC, exposed on port **6969**
+- 🐳 Runs in Docker (non-root, with a healthcheck) or an LXC, exposed on port **6969**
 
 ---
 
@@ -76,9 +78,11 @@ Everything lives in [`config/config.yaml`](config/config.yaml). Edit it and refr
 ```yaml
 title: "My Dashboard"
 subtitle: "Home Lab"      # optional
-theme: dark               # dark | light
+theme: dark               # dark | light | auto
 refresh_interval: 30      # seconds between health checks (0 = disable)
 columns: 3                # 1-4 column grid
+timeout: 5                # default health-check timeout, seconds
+status_cache_ttl: 5       # server-side cache so open tabs share one check
 
 groups:
   - name: "Media"
@@ -90,23 +94,35 @@ groups:
         description: "Media server"
         check: true            # show a live status dot
         check_path: "/health"  # optional: path used for the health check
+      - name: "Proxmox"
+        url: "https://192.168.1.10:8006"
+        check: true
+        allow_insecure: true   # accept the self-signed TLS certificate
 ```
 
 | Field | Scope | Description |
 |---|---|---|
 | `title` | top-level | Dashboard title in the header |
 | `subtitle` | top-level | Optional small text under the title |
-| `theme` | top-level | `dark` or `light` |
+| `theme` | top-level | `dark`, `light`, or `auto` (follow the browser/OS preference). A toggle in the header overrides this per-browser. |
 | `refresh_interval` | top-level | Seconds between status re-checks (`0` disables auto-refresh) |
 | `columns` | top-level | Number of group columns, `1`–`4` |
+| `timeout` | top-level | Default health-check timeout in seconds (per-service `timeout` overrides it) |
+| `status_cache_ttl` | top-level | Seconds the server caches `/api/status` so multiple open tabs share one sweep (`0` disables) |
 | `name` / `icon` | group | Group card heading and emoji |
 | `name` / `url` | service | Link label and destination |
 | `icon` | service | Emoji shown next to the service |
 | `description` | service | Optional subtitle line |
 | `check` | service | `true` to enable the live status dot |
 | `check_path` | service | Optional path appended to `url` for the health check |
+| `allow_insecure` | service | `true` to accept self-signed/invalid TLS certificates for this check |
+| `timeout` | service | Per-service health-check timeout in seconds |
+| `method` | service | HTTP method for the check (default `GET`; e.g. `HEAD`) |
+| `expect_status` | service | Require this exact status code instead of the default "any code `< 400`" |
 
-Icons are just emoji — paste any you like. The status dot turns **green** when the service responds (HTTP < 400), **red** when it's unreachable or times out, and **gray** when `check` is off.
+Icons are just emoji — paste any you like. The status dot turns **green** when the service responds (HTTP < 400, or matches `expect_status`), **red** when it's unreachable or times out, and **gray** when `check` is off. Hover a dot to see the response time.
+
+**Tips:** press `/` to jump to the filter box, and use the header toggle to switch theme — your choice is remembered in the browser.
 
 ---
 
@@ -153,9 +169,26 @@ dashify/
 ├── src/
 │   ├── server.js          # Express backend + health checks + live config reload
 │   └── public/            # static frontend (HTML/CSS/JS, no build step)
+├── test/                  # node:test smoke + health-check tests
+├── .github/workflows/     # CI (lint, test, docker build)
 ├── Dockerfile
 ├── docker-compose.yml
 └── package.json
 ```
 
 No build step, no database — just Node and a YAML file.
+
+---
+
+## Development
+
+```bash
+npm install
+npm run dev     # auto-restart on changes
+npm test        # run the test suite
+npm run lint    # syntax-check the source
+```
+
+Tests run on plain Node (`node --test`) with no extra dependencies. They boot the
+server on a throwaway port, exercise the API, and verify the health-check logic
+against a local stand-in server.

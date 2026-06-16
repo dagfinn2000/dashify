@@ -3,6 +3,7 @@ services:
     build: .
     container_name: dashify
     restart: unless-stopped
+    init: true               # forward signals & reap zombies for clean shutdowns
     ports:
       - "6969:6969"
     volumes:

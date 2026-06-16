@@ -1,12 +1,30 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="theme-dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="theme-color" content="#13151f" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#e8edf5" media="(prefers-color-scheme: light)" />
   <title>Dashify</title>
+  <link
+    rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236c8ef7'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%230f1117'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%234ade80'/%3E%3C/svg%3E"
+  />
   <link rel="stylesheet" href="style.css" />
+  <script>
+    // Apply the saved theme before first paint to avoid a flash.
+    (function () {
+      try {
+        var t = localStorage.getItem('dashify-theme');
+        if (t === 'light' || t === 'dark') {
+          document.documentElement.className = 'theme-' + t;
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
-<body class="theme-dark">
+<body>
   <header>
     <div class="header-inner">
       <div class="header-text">
@@ -14,8 +32,19 @@
         <p id="site-subtitle"></p>
       </div>
       <div class="header-meta">
-        <span id="last-updated"></span>
-        <button id="refresh-btn" title="Refresh status">↻</button>
+        <span id="status-summary" class="status-summary" aria-live="polite"></span>
+        <input
+          id="filter"
+          class="filter"
+          type="search"
+          placeholder="Filter…  (/)"
+          aria-label="Filter services"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <span id="last-updated" aria-live="polite"></span>
+        <button id="theme-btn" class="icon-btn" type="button" aria-label="Toggle theme" title="Toggle theme">🌙</button>
+        <button id="refresh-btn" class="icon-btn" type="button" aria-label="Refresh status" title="Refresh status">↻</button>
       </div>
     </div>
   </header>

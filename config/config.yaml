@@ -4,9 +4,11 @@
 
 title: "My Dashboard"
 subtitle: "Home Lab"       # optional subtitle shown below the title
-theme: dark                # dark | light
+theme: dark                # dark | light | auto (follow the browser/OS preference)
 refresh_interval: 30       # seconds between status re-checks (set to 0 to disable)
 columns: 3                 # number of service group columns (1-4)
+timeout: 5                 # default health-check timeout in seconds (per-service override below)
+status_cache_ttl: 5        # seconds the server caches results so open tabs share one check
 
 # Groups contain your services and quick links.
 # Each group appears as a card column on the dashboard.
@@ -47,6 +49,10 @@ groups:
         icon: "🖥️"
         description: "Hypervisor"
         check: true
+        allow_insecure: true   # accept the self-signed TLS certificate
+        # timeout: 10          # optional: per-service timeout override (seconds)
+        # method: HEAD         # optional: HTTP method for the check (default GET)
+        # expect_status: 200   # optional: require an exact status code instead of <400
 
       - name: "Grafana"
         url: "http://192.168.1.100:3000"
