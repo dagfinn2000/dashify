@@ -453,6 +453,94 @@ footer code {
 
 @keyframes shimmer { to { background-position: -200% 0; } }
 
+/* ── Colour editor panel ─────────────────────────────── */
+.color-panel {
+  position: fixed;
+  top: 64px;
+  right: 16px;
+  width: 264px;
+  max-height: 78vh;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35);
+  z-index: 50;
+  padding: 12px 14px;
+  display: none;
+}
+
+.color-panel.open { display: block; }
+
+.cp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.cp-theme { color: var(--text-muted); font-weight: 500; }
+.cp-close { width: 26px; height: 26px; font-size: 0.75rem; }
+
+.cp-rows { display: flex; flex-direction: column; gap: 7px; }
+
+.cp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.cp-label { font-size: 0.8rem; color: var(--text-muted); }
+
+.cp-row input[type='color'] {
+  width: 36px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+}
+
+.cp-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.cp-copy,
+.cp-reset {
+  background: var(--bg-card-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 0.74rem;
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.cp-copy:hover,
+.cp-reset:hover { color: var(--accent); border-color: var(--accent); }
+
+.cp-note {
+  flex-basis: 100%;
+  font-size: 0.64rem;
+  color: var(--text-dim);
+}
+
+@media (max-width: 560px) {
+  .color-panel { left: 12px; right: 12px; width: auto; }
+}
+
 /* ── Empty state ─────────────────────────────────────── */
 .empty-state {
   grid-column: 1 / -1;

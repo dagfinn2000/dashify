@@ -60,6 +60,23 @@
 
     $('theme-btn').addEventListener('click', toggleTheme);
 
+    buildColorPanel();
+    $('palette-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePanel();
+    });
+    document.addEventListener('click', (e) => {
+      const panel = $('color-panel');
+      if (
+        panel &&
+        panel.classList.contains('open') &&
+        !panel.contains(e.target) &&
+        !$('palette-btn').contains(e.target)
+      ) {
+        togglePanel(false);
+      }
+    });
+
     const filter = $('filter');
     filter.addEventListener('input', applyFilter);
 
@@ -171,26 +188,160 @@
     root.style.setProperty('--card-blur', `${Number(config?.card_blur) || 0}px`);
   }
 
-  // Custom colours: a flat map applies to both themes; nested dark:/light:
-  // maps apply to the matching theme. Re-run on every theme change.
+  // Colours come from three layers, lowest to highest precedence:
+  //   1. the theme CSS class, 2. config.yaml `colors`, 3. the in-page editor
+  //      (per-theme, saved in this browser). Re-run on every theme change.
+  const COLORS_KEY = 'dashify-colors';
+  const COLOR_FIELDS = [
+    ['accent', 'Accent'],
+    ['bg', 'Background'],
+    ['bg-card', 'Card'],
+    ['bg-card-hover', 'Card hover'],
+    ['header-bg', 'Header'],
+    ['border', 'Border'],
+    ['text', 'Text'],
+    ['text-muted', 'Muted text'],
+    ['text-dim', 'Dim text'],
+    ['up', 'Online'],
+    ['down', 'Offline'],
+    ['unknown', 'Unknown'],
+  ];
+
+  let colorOverrides = (() => {
+    try {
+      const o = JSON.parse(localStorage.getItem(COLORS_KEY)) || {};
+      return { dark: o.dark || {}, light: o.light || {} };
+    } catch {
+      return { dark: {}, light: {} };
+    }
+  })();
+
+  const currentTheme = () =>
+    document.documentElement.classList.contains('theme-light') ? 'light' : 'dark';
+
+  function persistColors() {
+    try {
+      localStorage.setItem(COLORS_KEY, JSON.stringify(colorOverrides));
+    } catch {}
+  }
+
   function applyColors() {
     const root = document.documentElement;
     OVERRIDABLE.forEach((k) => root.style.removeProperty(`--${k}`));
+    const theme = currentTheme();
 
+    // 2) config-provided colours (flat keys apply to both themes)
     const colors = config?.colors;
-    if (!colors || typeof colors !== 'object') return;
-
-    const theme = root.classList.contains('theme-light') ? 'light' : 'dark';
-    // Flat keys apply to both themes; nested dark:/light: maps override per theme.
-    const { dark, light, ...flat } = colors;
-    const map = { ...flat, ...((theme === 'light' ? light : dark) || {}) };
-
-    for (const [key, value] of Object.entries(map)) {
-      const name = String(key).replace(/_/g, '-');
-      if (OVERRIDABLE.includes(name) && typeof value === 'string') {
-        root.style.setProperty(`--${name}`, value.replace(/[<>]/g, ''));
+    if (colors && typeof colors === 'object') {
+      const { dark, light, ...flat } = colors;
+      const map = { ...flat, ...((theme === 'light' ? light : dark) || {}) };
+      for (const [key, value] of Object.entries(map)) {
+        const name = String(key).replace(/_/g, '-');
+        if (OVERRIDABLE.includes(name) && typeof value === 'string') {
+          root.style.setProperty(`--${name}`, value.replace(/[<>]/g, ''));
+        }
       }
     }
+
+    // 3) in-page editor overrides for the active theme (highest precedence)
+    for (const [name, value] of Object.entries(colorOverrides[theme] || {})) {
+      if (OVERRIDABLE.includes(name) && typeof value === 'string') {
+        root.style.setProperty(`--${name}`, value);
+      }
+    }
+
+    syncColorInputs();
+  }
+
+  // ── In-page colour editor ────────────────────────────
+  function toHex(color) {
+    if (/^#[0-9a-f]{6}$/i.test(color)) return color.toLowerCase();
+    const el = document.createElement('span');
+    el.style.color = color || '#000';
+    document.body.appendChild(el);
+    const rgb = getComputedStyle(el).color.match(/\d+/g);
+    el.remove();
+    if (!rgb) return '#000000';
+    return '#' + rgb.slice(0, 3).map((n) => Number(n).toString(16).padStart(2, '0')).join('');
+  }
+
+  function buildColorPanel() {
+    const panel = document.createElement('div');
+    panel.id = 'color-panel';
+    panel.className = 'color-panel';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', 'Customize colours');
+    panel.innerHTML = `
+      <div class="cp-header">
+        <span>Colours · <span class="cp-theme"></span></span>
+        <button class="cp-close icon-btn" type="button" aria-label="Close">✕</button>
+      </div>
+      <div class="cp-rows"></div>
+      <div class="cp-footer">
+        <button class="cp-copy" type="button">Copy YAML</button>
+        <button class="cp-reset" type="button">Reset</button>
+        <span class="cp-note">Saved in this browser</span>
+      </div>
+    `;
+    const rows = panel.querySelector('.cp-rows');
+    COLOR_FIELDS.forEach(([key, label]) => {
+      const row = document.createElement('label');
+      row.className = 'cp-row';
+      row.innerHTML = `<span class="cp-label">${label}</span>`;
+      const input = document.createElement('input');
+      input.type = 'color';
+      input.dataset.key = key;
+      input.addEventListener('input', () => {
+        colorOverrides[currentTheme()][key] = input.value;
+        persistColors();
+        applyColors();
+      });
+      row.appendChild(input);
+      rows.appendChild(row);
+    });
+    panel.querySelector('.cp-close').addEventListener('click', () => togglePanel(false));
+    panel.querySelector('.cp-reset').addEventListener('click', () => {
+      colorOverrides[currentTheme()] = {};
+      persistColors();
+      applyColors();
+    });
+    panel.querySelector('.cp-copy').addEventListener('click', copyColorYaml);
+    document.body.appendChild(panel);
+  }
+
+  function syncColorInputs() {
+    const panel = $('color-panel');
+    if (!panel) return;
+    panel.querySelector('.cp-theme').textContent = currentTheme();
+    const cs = getComputedStyle(document.documentElement);
+    panel.querySelectorAll('input[type=color]').forEach((inp) => {
+      inp.value = toHex(cs.getPropertyValue(`--${inp.dataset.key}`).trim());
+    });
+  }
+
+  function togglePanel(force) {
+    const panel = $('color-panel');
+    if (!panel) return;
+    const show = force == null ? !panel.classList.contains('open') : force;
+    panel.classList.toggle('open', show);
+    if (show) syncColorInputs();
+  }
+
+  function copyColorYaml() {
+    const theme = currentTheme();
+    const map = colorOverrides[theme] || {};
+    const keys = Object.keys(map);
+    const note = $('color-panel').querySelector('.cp-note');
+    if (!keys.length) {
+      note.textContent = 'Nothing customised yet';
+      return;
+    }
+    const yaml = `colors:\n  ${theme}:\n` + keys.map((k) => `    ${k}: "${map[k]}"`).join('\n') + '\n';
+    const done = () => {
+      note.textContent = 'Copied YAML!';
+    };
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(yaml).then(done, done);
+    else done();
   }
 
   // ── Resizable cards (column span, remembered per browser) ──

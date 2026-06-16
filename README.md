@@ -194,6 +194,12 @@ colors:
 Overridable keys: `bg`, `bg-card`, `bg-card-hover`, `border`, `text`,
 `text-muted`, `text-dim`, `accent`, `up`, `down`, `header-bg`.
 
+**Edit colours in the browser.** Click the palette icon in the header to open a
+live colour editor. Changes apply instantly and are saved per browser (per
+theme), layered on top of anything in `config.yaml`. Use **Reset** to clear them,
+or **Copy YAML** to grab a `colors:` block to paste into `config.yaml` if you
+want the palette on every device.
+
 ### Resizing cards
 
 Give a group a `width:` to span multiple columns, or just **drag the right edge**
