@@ -52,6 +52,33 @@ body {
   flex-direction: column;
 }
 
+/* ── Optional background image ────────────────────────── */
+body.has-bg { background: transparent; }
+
+body.has-bg::before,
+body.has-bg::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+body.has-bg::before {
+  z-index: -2;
+  background-image: var(--bg-image);
+  background-size: cover;
+  background-position: center;
+  filter: blur(var(--bg-blur, 0));
+  transform: scale(1.05); /* hide blur edges */
+}
+
+/* Scrim in the theme background colour so cards/text stay readable */
+body.has-bg::after {
+  z-index: -1;
+  background: var(--bg);
+  opacity: var(--bg-dim, 0.5);
+}
+
 /* ── Header ──────────────────────────────────────────── */
 header {
   background: var(--header-bg);
@@ -154,6 +181,7 @@ header {
 }
 
 .icon-btn:hover { color: var(--accent); border-color: var(--accent); }
+.icon-btn svg { display: block; }
 #refresh-btn.spinning { animation: spin 0.6s linear infinite; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -197,7 +225,17 @@ main {
   gap: 8px;
 }
 
-.group-icon { font-size: 1.1rem; }
+.group-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.group-icon .icon-img { width: 20px; height: 20px; }
+.group-icon .icon-emoji { font-size: 1.1rem; }
 
 .group-name {
   font-size: 0.82rem;
@@ -226,10 +264,34 @@ main {
 .service:hover { background: var(--bg-card-hover); }
 
 .service-icon {
-  font-size: 1.3rem;
   width: 28px;
-  text-align: center;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Icon nodes (img / emoji / monogram) ─────────────── */
+.icon-img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  display: block;
+}
+
+.icon-emoji { font-size: 1.3rem; line-height: 1; }
+
+.icon-monogram {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #fff;
+  background: hsl(var(--mono-hue, 220) 45% 48%);
 }
 
 .service-info { flex: 1; min-width: 0; }

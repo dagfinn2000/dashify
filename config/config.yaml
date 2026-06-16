@@ -10,73 +10,75 @@ columns: 3                 # number of service group columns (1-4)
 timeout: 5                 # default health-check timeout in seconds (per-service override below)
 status_cache_ttl: 5        # seconds the server caches results so open tabs share one check
 
+# Icons resolve automatically from https://github.com/homarr-labs/dashboard-icons
+# based on each service's name — no need to set an icon for common services.
+# Override per service with `icon:` (a slug like "pi-hole", an emoji, a URL, or a
+# local file dropped in this config/ folder). icon_format picks the asset type.
+icon_format: svg           # svg | png | webp
+
+# Optional background image for the whole dashboard. Use a URL, or drop an image
+# into this config/ folder and reference it by filename (served from /user/).
+# background: "background.jpg"
+# background_dim: 0.5      # 0-1 scrim over the image so text stays readable
+# background_blur: 0       # px of blur applied to the background image
+
 # Groups contain your services and quick links.
 # Each group appears as a card column on the dashboard.
 groups:
   - name: "Media"
-    icon: "🎬"
     services:
       - name: "Jellyfin"
         url: "http://192.168.1.100:8096"
-        icon: "🎞️"
         description: "Media server"
-        check: true          # perform HTTP health check
-        check_path: "/health" # optional: override the path used for health checks
+        check: true            # perform HTTP health check
+        check_path: "/health"  # optional: override the path used for health checks
 
       - name: "Plex"
         url: "http://192.168.1.100:32400"
-        icon: "📺"
         description: "Media server"
         check: true
 
       - name: "Navidrome"
         url: "http://192.168.1.100:4533"
-        icon: "🎵"
         description: "Music streaming"
         check: true
 
   - name: "Infrastructure"
-    icon: "🐳"
     services:
       - name: "Portainer"
         url: "http://192.168.1.100:9000"
-        icon: "🐳"
         description: "Container management"
         check: true
 
       - name: "Proxmox"
         url: "https://192.168.1.10:8006"
-        icon: "🖥️"
         description: "Hypervisor"
         check: true
         allow_insecure: true   # accept the self-signed TLS certificate
+        # icon: proxmox        # optional: force a specific dashboard-icons slug
         # timeout: 10          # optional: per-service timeout override (seconds)
         # method: HEAD         # optional: HTTP method for the check (default GET)
         # expect_status: 200   # optional: require an exact status code instead of <400
 
       - name: "Grafana"
         url: "http://192.168.1.100:3000"
-        icon: "📊"
         description: "Metrics & dashboards"
         check: true
 
   - name: "Network"
-    icon: "🌐"
     services:
-      - name: "AdGuard Home"
-        url: "http://192.168.1.1:3000"
-        icon: "🛡️"
+      - name: "Pi-hole"
+        url: "http://192.168.1.1/admin"
+        icon: pihole           # keyword aliases resolve to the right slug (pi-hole)
         description: "DNS ad blocker"
         check: true
 
       - name: "Nginx Proxy Manager"
         url: "http://192.168.1.100:81"
-        icon: "🔀"
         description: "Reverse proxy"
         check: true
 
       - name: "Uptime Kuma"
         url: "http://192.168.1.100:3001"
-        icon: "📡"
         description: "Uptime monitor"
         check: true

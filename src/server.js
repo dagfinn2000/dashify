@@ -145,6 +145,10 @@ export const app = express();
 app.disable('x-powered-by');
 app.use(express.static(join(__dirname, 'public')));
 
+// Serve the user's config directory so they can drop in their own assets
+// (e.g. a background image or custom icons) and reference them as /user/<file>.
+app.use('/user', express.static(dirname(CONFIG_PATH), { index: false, dotfiles: 'ignore' }));
+
 app.get('/healthz', (_req, res) => {
   res.json({ status: 'ok', uptime: Math.round((Date.now() - startedAt) / 1000) });
 });

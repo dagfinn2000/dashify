@@ -68,3 +68,9 @@ test('GET / serves the frontend shell', async () => {
   const html = await r.text();
   assert.match(html, /Dashify/);
 });
+
+test('GET /user serves assets from the config directory', async () => {
+  // config.yaml lives in the config dir, so it should be reachable under /user
+  const r = await fetch(`${BASE}/user/config.yaml`);
+  assert.equal(r.status, 200);
+});
