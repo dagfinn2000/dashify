@@ -130,7 +130,9 @@ async function piholeV5(base, w) {
 }
 
 async function pihole(w) {
-  const base = trimSlash(w.url);
+  // The widget base is the host root. People often reuse the service URL, which
+  // points at the web UI (…/admin) — strip it so /api and /admin/api.php resolve.
+  const base = trimSlash(w.url).replace(/\/admin\/?$/i, '');
   try {
     return { fields: await piholeV6(base, w) }; // Pi-hole v6 (REST API)
   } catch (e) {
