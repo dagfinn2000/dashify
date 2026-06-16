@@ -235,9 +235,22 @@ header {
 
 .icon-btn:hover { color: var(--accent); border-color: var(--accent); }
 .icon-btn svg { display: block; }
-#refresh-btn.spinning { animation: spin 0.6s linear infinite; }
 
-@keyframes spin { to { transform: rotate(360deg); } }
+/* While refreshing, pulse a highlight instead of spinning */
+#refresh-btn.refreshing { animation: pulse-highlight 0.9s ease-in-out infinite; }
+
+@keyframes pulse-highlight {
+  0%, 100% {
+    color: var(--text-muted);
+    border-color: var(--border);
+    box-shadow: none;
+  }
+  50% {
+    color: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+}
 
 /* ── Focus ───────────────────────────────────────────── */
 :focus-visible {

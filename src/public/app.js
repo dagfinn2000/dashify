@@ -671,7 +671,7 @@
   // ── Status ───────────────────────────────────────────
   async function refreshStatus(force = false) {
     const btn = $('refresh-btn');
-    btn.classList.add('spinning');
+    btn.classList.add('refreshing');
 
     try {
       const res = await fetch('/api/status' + (force ? '?fresh=1' : ''));
@@ -681,7 +681,7 @@
     } catch {
       $('last-updated').textContent = 'Status check failed';
     } finally {
-      btn.classList.remove('spinning');
+      btn.classList.remove('refreshing');
     }
   }
 
