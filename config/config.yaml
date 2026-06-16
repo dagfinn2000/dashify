@@ -72,11 +72,22 @@ groups:
         icon: pihole           # keyword aliases resolve to the right slug (pi-hole)
         description: "DNS ad blocker"
         check: true
+        # Live stats on the card (queries / blocked / %). Works with Pi-hole v6
+        # and v5. The key (v6 app password or v5 API token) stays on the server
+        # and is never sent to the browser.
+        widget:
+          type: pihole
+          url: "http://192.168.1.1"   # base URL, without /admin
+          key: "YOUR_PIHOLE_APP_PASSWORD_OR_API_TOKEN"
 
       - name: "Nginx Proxy Manager"
         url: "http://192.168.1.100:81"
         description: "Reverse proxy"
         check: true
+        widget:
+          type: npm
+          username: "admin@example.com"
+          password: "YOUR_NPM_PASSWORD"
 
       - name: "Uptime Kuma"
         url: "http://192.168.1.100:3001"

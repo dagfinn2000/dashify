@@ -113,6 +113,7 @@ groups:
 | `columns` | top-level | Number of group columns, `1`–`4` |
 | `timeout` | top-level | Default health-check timeout in seconds (per-service `timeout` overrides it) |
 | `status_cache_ttl` | top-level | Seconds the server caches `/api/status` so multiple open tabs share one sweep (`0` disables) |
+| `widget_cache_ttl` | top-level | Seconds the server caches widget API data (default `30`, `0` disables) |
 | `icon_format` | top-level | dashboard-icons asset type: `svg` (default), `png`, or `webp` |
 | `background` | top-level | Optional background image — a URL or a filename dropped in `config/` (see [Background image](#background-image)) |
 | `background_dim` | top-level | `0`–`1` scrim over the background so text stays readable (default `0.5`) |
@@ -127,6 +128,7 @@ groups:
 | `timeout` | service | Per-service health-check timeout in seconds |
 | `method` | service | HTTP method for the check (default `GET`; e.g. `HEAD`) |
 | `expect_status` | service | Require this exact status code instead of the default "any code `< 400`" |
+| `widget` | service | Pull live stats from the service's API onto its card — see [Service widgets](#service-widgets) |
 
 The status dot turns **green** when the service responds (HTTP < 400, or matches `expect_status`), **red** when it's unreachable or times out, and **gray** when `check` is off. Hover a dot to see the response time.
 
@@ -162,6 +164,57 @@ background_blur: 3             # optional blur, in pixels
 Any file you place next to `config.yaml` is served under `/user/`, so the same
 mechanism works for custom service icons too. With Docker the `config/` folder is
 bind-mounted, so just drop the image in and refresh — no rebuild needed.
+
+---
+
+## Service widgets
+
+A service can pull live stats from its own API and show them on its card — e.g.
+Pi-hole's queries/blocked counts. Add a `widget:` block to a service:
+
+```yaml
+- name: "Pi-hole"
+  url: "http://192.168.1.1/admin"
+  check: true
+  widget:
+    type: pihole
+    url: "http://192.168.1.1"     # base URL (defaults to the service `url`)
+    key: "your-app-password"       # v6 app password, or v5 API token
+```
+
+**API keys stay on the server.** Widget data is fetched server-side and exposed
+via `/api/widgets`; secrets are stripped from `/api/config`, so they never reach
+the browser. Results are cached for `widget_cache_ttl` seconds (default `30`).
+A widget inherits the service's `allow_insecure` and `timeout` unless overridden.
+
+### Built-in providers
+
+| `type` | Fields shown | Auth |
+|---|---|---|
+| `pihole` | Queries, Blocked, Blocked %, Domains | `key` (Pi-hole **v6** app password or **v5** API token) — v6 is tried first, then v5 |
+| `adguard` | Queries, Blocked, Blocked % | `username` + `password` (AdGuard Home login) |
+| `npm` | Proxy hosts, Enabled, Disabled | `username` + `password` (Nginx Proxy Manager login) |
+| `portainer` | Running, Stopped (containers) | `key` (Portainer API access token) |
+| `json` | Whatever you map | optional `headers` |
+
+### Anything else: the `json` provider
+
+Point it at any JSON API and map fields by dot-path — no code needed:
+
+```yaml
+widget:
+  type: json
+  url: "http://host:8080/api/stats"
+  headers:
+    Authorization: "Bearer TOKEN"
+  mappings:
+    - { label: "Users",  path: "data.active_users", format: "number" }
+    - { label: "Load",   path: "system.load.0",     suffix: "%" }
+```
+
+`format` can be `number` (thousands separators) or `percent` (one decimal + `%`);
+`path` supports array indices (e.g. `system.load.0`). If an API can't be reached
+the card simply shows no stats — it never breaks the dashboard.
 
 ---
 

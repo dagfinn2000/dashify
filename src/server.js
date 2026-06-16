@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import http from 'node:http';
 import https from 'node:https';
 import yaml from 'js-yaml';
+import { getWidget } from './widgets.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = process.env.CONFIG_PATH || join(__dirname, '..', 'config', 'config.yaml');
@@ -18,9 +19,25 @@ const DEFAULTS = Object.freeze({
   refresh_interval: 30,
   columns: 3,
   theme: 'dark',
-  timeout: 5,          // seconds per health check (per-service override allowed)
-  status_cache_ttl: 5, // seconds the server caches /api/status across clients
+  timeout: 5,           // seconds per health check (per-service override allowed)
+  status_cache_ttl: 5,  // seconds the server caches /api/status across clients
+  widget_cache_ttl: 30, // seconds the server caches widget API data across clients
 });
+
+// Strip server-only secrets (widget API keys/passwords) before sending config
+// to the browser. Widget *data* is delivered separately via /api/widgets.
+export function publicConfig(cfg) {
+  return {
+    ...cfg,
+    groups: (cfg.groups || []).map((group) => ({
+      ...group,
+      services: (group.services || []).map((svc) => {
+        const { widget, ...rest } = svc;
+        return widget ? { ...rest, has_widget: true } : rest;
+      }),
+    })),
+  };
+}
 
 export function loadConfig(path = CONFIG_PATH) {
   try {
@@ -33,7 +50,6 @@ export function loadConfig(path = CONFIG_PATH) {
 }
 
 let config = loadConfig();
-let cache = { at: 0, data: null, pending: null };
 
 // ── Health checks ─────────────────────────────────────────────
 // Built on Node's http/https so we can disable TLS verification per
@@ -118,27 +134,52 @@ async function computeStatus() {
   return results;
 }
 
-// Cache results briefly so multiple open tabs/clients share one sweep
-// instead of each hammering every service on their own timer.
-function getStatus(force = false) {
-  const ttl = (config.status_cache_ttl ?? 5) * 1000;
-  const fresh = force || ttl <= 0 || !cache.data || Date.now() - cache.at >= ttl;
-  if (!fresh) return Promise.resolve({ data: cache.data, cached: true });
-
-  if (!cache.pending) {
-    cache.pending = computeStatus().then(
-      (data) => {
-        cache = { at: Date.now(), data, pending: null };
-        return data;
-      },
-      (err) => {
-        cache.pending = null;
-        throw err;
-      },
-    );
-  }
-  return cache.pending.then((data) => ({ data, cached: false }));
+async function computeWidgets() {
+  const results = {};
+  const tasks = (config.groups || []).flatMap((group) =>
+    (group.services || [])
+      .filter((s) => s.widget && s.widget.type)
+      .map(async (s) => {
+        // Widgets inherit the service's TLS/timeout settings unless overridden.
+        const w = { allow_insecure: s.allow_insecure, timeout: s.timeout, ...s.widget };
+        w.url = w.url || s.url;
+        results[`${group.name}::${s.name}`] = await getWidget(w);
+      }),
+  );
+  await Promise.allSettled(tasks);
+  return results;
 }
+
+// Cache results briefly so multiple open tabs/clients share one sweep instead
+// of each hammering every service (or its API) on their own timer.
+function makeCached(compute, ttlSeconds) {
+  let cache = { at: 0, data: null, pending: null };
+  const get = (force = false) => {
+    const ttl = (ttlSeconds() ?? 0) * 1000;
+    const fresh = force || ttl <= 0 || !cache.data || Date.now() - cache.at >= ttl;
+    if (!fresh) return Promise.resolve({ data: cache.data, cached: true });
+    if (!cache.pending) {
+      cache.pending = compute().then(
+        (data) => {
+          cache = { at: Date.now(), data, pending: null };
+          return data;
+        },
+        (err) => {
+          cache.pending = null;
+          throw err;
+        },
+      );
+    }
+    return cache.pending.then((data) => ({ data, cached: false }));
+  };
+  const reset = () => {
+    cache = { at: 0, data: null, pending: null };
+  };
+  return { get, reset };
+}
+
+const statusCache = makeCached(computeStatus, () => config.status_cache_ttl);
+const widgetsCache = makeCached(computeWidgets, () => config.widget_cache_ttl);
 
 // ── App ───────────────────────────────────────────────────────
 export const app = express();
@@ -154,12 +195,12 @@ app.get('/healthz', (_req, res) => {
 });
 
 app.get('/api/config', (_req, res) => {
-  res.json(config);
+  res.json(publicConfig(config));
 });
 
 app.get('/api/status', async (req, res) => {
   try {
-    const { data, cached } = await getStatus(req.query.fresh === '1');
+    const { data, cached } = await statusCache.get(req.query.fresh === '1');
     res.set('Cache-Control', 'no-store');
     res.set('X-Dashify-Cache', cached ? 'hit' : 'miss');
     res.json(data);
@@ -168,9 +209,21 @@ app.get('/api/status', async (req, res) => {
   }
 });
 
+app.get('/api/widgets', async (req, res) => {
+  try {
+    const { data, cached } = await widgetsCache.get(req.query.fresh === '1');
+    res.set('Cache-Control', 'no-store');
+    res.set('X-Dashify-Cache', cached ? 'hit' : 'miss');
+    res.json(data);
+  } catch {
+    res.status(500).json({ error: 'widget fetch failed' });
+  }
+});
+
 export function start(port = PORT) {
   config = loadConfig();
-  cache = { at: 0, data: null, pending: null };
+  statusCache.reset();
+  widgetsCache.reset();
 
   const server = app.listen(port, () => {
     console.log(`Dashify running on http://0.0.0.0:${port}`);
@@ -178,7 +231,8 @@ export function start(port = PORT) {
 
   watchFile(CONFIG_PATH, { interval: 1000 }, () => {
     config = loadConfig();
-    cache = { at: 0, data: null, pending: null };
+    statusCache.reset();
+    widgetsCache.reset();
     console.log('Config reloaded');
   });
 

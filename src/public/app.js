@@ -35,6 +35,7 @@
 
   let config = null;
   let statusMap = {};
+  let widgetMap = {};
   let refreshTimer = null;
 
   const $ = (id) => document.getElementById(id);
@@ -45,7 +46,7 @@
     applyTheme();
     applyBackground();
     renderGroups();
-    await refreshStatus();
+    await refreshAll();
     scheduleRefresh();
     wireControls();
   }
@@ -53,7 +54,7 @@
   function wireControls() {
     $('refresh-btn').addEventListener('click', () => {
       clearInterval(refreshTimer);
-      refreshStatus(true).then(scheduleRefresh);
+      refreshAll(true).then(scheduleRefresh);
     });
 
     $('theme-btn').addEventListener('click', toggleTheme);
@@ -316,6 +317,7 @@
     a.rel = 'noopener noreferrer';
     a.dataset.svcName = svc.name || '';
     a.dataset.desc = svc.description || '';
+    a.dataset.key = `${group.name}::${svc.name}`;
 
     const dotHtml = svc.check
       ? `<span class="status-dot unknown" role="img" data-key="${esc(group.name)}::${esc(svc.name)}" aria-label="Checking…" title="Checking…"></span>`
@@ -325,6 +327,7 @@
       <span class="service-info">
         <span class="service-name">${esc(svc.name)}</span>
         ${svc.description ? `<span class="service-desc">${esc(svc.description)}</span>` : ''}
+        <span class="service-stats" style="display:none"></span>
       </span>
       ${dotHtml}
     `;
@@ -398,8 +401,45 @@
     clearInterval(refreshTimer);
     const interval = (config?.refresh_interval ?? 30) * 1000;
     if (interval > 0) {
-      refreshTimer = setInterval(refreshStatus, interval);
+      refreshTimer = setInterval(refreshAll, interval);
     }
+  }
+
+  function refreshAll(force = false) {
+    return Promise.all([refreshStatus(force), refreshWidgets(force)]);
+  }
+
+  // ── Widgets (per-service API data) ───────────────────
+  async function refreshWidgets(force = false) {
+    try {
+      const res = await fetch('/api/widgets' + (force ? '?fresh=1' : ''));
+      widgetMap = await res.json();
+      applyWidgets();
+    } catch {
+      /* leave previous widget data in place */
+    }
+  }
+
+  function applyWidgets() {
+    document.querySelectorAll('.service[data-key]').forEach((a) => {
+      const host = a.querySelector('.service-stats');
+      if (!host) return;
+      const w = widgetMap[a.dataset.key];
+      const fields = w && Array.isArray(w.fields) ? w.fields : [];
+      if (!fields.length) {
+        host.innerHTML = '';
+        host.style.display = 'none';
+        return;
+      }
+      host.innerHTML = fields
+        .map(
+          (f) =>
+            `<span class="stat"><span class="stat-value">${esc(f.value)}</span>` +
+            `<span class="stat-label">${esc(f.label)}</span></span>`,
+        )
+        .join('');
+      host.style.display = '';
+    });
   }
 
   // ── Filter ───────────────────────────────────────────

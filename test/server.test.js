@@ -74,3 +74,17 @@ test('GET /user serves assets from the config directory', async () => {
   const r = await fetch(`${BASE}/user/config.yaml`);
   assert.equal(r.status, 200);
 });
+
+test('GET /api/config never leaks widget secrets', async () => {
+  const r = await fetch(`${BASE}/api/config`);
+  const text = await r.text();
+  // The default config ships a placeholder Pi-hole key; it must not be exposed.
+  assert.ok(!text.includes('YOUR_PIHOLE_APP_PASSWORD_OR_API_TOKEN'), 'key leaked to client');
+  assert.ok(!/"widget"\s*:/.test(text), 'widget block leaked to client');
+});
+
+test('GET /api/widgets returns an object', async () => {
+  const r = await fetch(`${BASE}/api/widgets`);
+  assert.equal(r.status, 200);
+  assert.equal(typeof (await r.json()), 'object');
+});

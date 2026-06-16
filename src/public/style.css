@@ -313,6 +313,33 @@ main {
   text-overflow: ellipsis;
 }
 
+/* ── Service widget stats ────────────────────────────── */
+.service-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.stat-value {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.stat-label {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
 /* ── Status dot ──────────────────────────────────────── */
 .status-dot {
   width: 8px;
