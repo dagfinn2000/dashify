@@ -103,7 +103,8 @@
     filter.addEventListener('input', applyFilter);
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === '/' && document.activeElement !== filter) {
+      // Don't steal "/" while the user is typing in a field (e.g. the feed box).
+      if (e.key === '/' && !isTypingTarget(e.target)) {
         e.preventDefault();
         filter.focus();
       } else if (e.key === 'Escape' && document.activeElement === filter) {
@@ -926,6 +927,14 @@
   }
 
   // ── Helpers ──────────────────────────────────────────
+  // True when the keyboard event originated in an editable field, so global
+  // single-key shortcuts (like "/") shouldn't fire.
+  function isTypingTarget(el) {
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+  }
+
   function esc(s) {
     return String(s ?? '')
       .replace(/&/g, '&amp;')

@@ -719,7 +719,8 @@ footer code {
 }
 
 @media (max-width: 560px) {
-  .color-panel { left: 12px; right: 12px; width: auto; }
+  /* Anchor to the bottom as a sheet so the taller stacked header can't cover it */
+  .color-panel { left: 12px; right: 12px; width: auto; top: auto; bottom: 12px; max-height: 70vh; }
 }
 
 /* ── Empty state ─────────────────────────────────────── */
@@ -749,11 +750,25 @@ footer code {
 
 @media (max-width: 560px) {
   main { padding: 14px; }
-  header { padding: 14px 16px; }
+  header { padding: 12px 14px; }
   #groups-container { grid-template-columns: 1fr; }
-  .filter { width: 110px; }
-  .filter:focus { width: 130px; }
+
+  /* Stack the header so the controls don't get squeezed off-screen */
+  .header-inner { flex-direction: column; align-items: stretch; gap: 12px; }
+  .header-meta { flex-wrap: wrap; gap: 8px; }
   .status-summary { display: none; }
+  .filter,
+  .filter:focus { flex: 1 1 100%; width: auto; order: -1; } /* full-width row of its own */
+  #last-updated { margin-right: auto; } /* timestamp left, buttons to the right */
+
+  /* Roomier tap targets on touch screens */
+  .icon-btn { width: 38px; height: 38px; }
+  .filter,
+  .rss-input,
+  .rss-add-btn { height: 38px; }
+
+  /* Keep the stacked feed pane from pushing the cards too far down */
+  .rss-list { max-height: 45vh; }
 }
 
 /* ── Reduced motion ──────────────────────────────────── */

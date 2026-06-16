@@ -70,13 +70,33 @@ export function interpolateEnv(value) {
   return value;
 }
 
+// RSS settings live in their own file (RSS.yaml) next to config.yaml so the main
+// config stays tidy. Its friendly keys map onto the internal rss_* config keys.
+const rssConfigPath = (configPath) =>
+  process.env.RSS_CONFIG_PATH || join(dirname(configPath), 'RSS.yaml');
+
+function loadRss(path) {
+  try {
+    const parsed = interpolateEnv(yaml.load(readFileSync(path, 'utf8')) || {});
+    const out = {};
+    if (parsed.feeds != null) out.rss = parsed.feeds;
+    if (parsed.item_limit != null) out.rss_item_limit = parsed.item_limit;
+    if (parsed.cache_ttl != null) out.rss_cache_ttl = parsed.cache_ttl;
+    return out;
+  } catch (e) {
+    if (e.code !== 'ENOENT') console.error('Failed to load RSS.yaml:', e.message);
+    return {}; // absent file is fine — feeds can still be added in the browser
+  }
+}
+
 export function loadConfig(path = CONFIG_PATH) {
+  const rss = loadRss(rssConfigPath(path));
   try {
     const parsed = yaml.load(readFileSync(path, 'utf8')) || {};
-    return { ...DEFAULTS, ...interpolateEnv(parsed) };
+    return { ...DEFAULTS, ...interpolateEnv(parsed), ...rss };
   } catch (e) {
     console.error('Failed to load config:', e.message);
-    return { ...DEFAULTS };
+    return { ...DEFAULTS, ...rss };
   }
 }
 
@@ -290,13 +310,16 @@ export function start(port = PORT) {
     console.log(`Dashify running on http://0.0.0.0:${port}`);
   });
 
-  watchFile(CONFIG_PATH, { interval: 1000 }, () => {
+  const reload = () => {
     config = loadConfig();
     statusCache.reset();
     widgetsCache.reset();
     feedCache.clear();
     console.log('Config reloaded');
-  });
+  };
+  // Watch both the main config and the separate RSS.yaml for live edits.
+  watchFile(CONFIG_PATH, { interval: 1000 }, reload);
+  watchFile(rssConfigPath(CONFIG_PATH), { interval: 1000 }, reload);
 
   const shutdown = (signal) => {
     console.log(`\n${signal} received, shutting down…`);
