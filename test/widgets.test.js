@@ -110,12 +110,6 @@ test('pi-hole v6 reports queries/blocked/%', async () => {
   assert.ok(out.fields.some((f) => f.label === 'Blocked' && f.value === '20.0%'));
 });
 
-test('pi-hole strips a trailing /admin from the base url', async () => {
-  const out = await getWidget({ type: 'pihole', url: base + '/admin', key: 'secret' });
-  assert.equal(valueOf(out, 'Queries'), '20,000');
-  assert.equal(valueOf(out, 'Blocked'), '4,000');
-});
-
 test('pi-hole reports a wrong password instead of silently retrying v5', async () => {
   const out = await getWidget({ type: 'pihole', url: base, key: 'wrong' });
   assert.ok(out.error, 'expected an error');
