@@ -28,6 +28,8 @@
   const CLOCK_KEY = 'dashify-clock';
   const RSS_KEY = 'dashify-rss';
   const RSS_PANE_KEY = 'dashify-rss-pane';
+  const COLLAPSED_KEY = 'dashify-collapsed';
+  const ORDER_KEY = 'dashify-group-order';
   let config = null;
   let statusMap = {};
   let widgetMap = {};
@@ -52,12 +54,14 @@
     applyAppearance();
     feeds = loadFeeds();
     applyRssPane();
+    applyHeaderExtras();
     renderGroups();
     renderFeeds();
     await refreshAll();
     scheduleRefresh();
     wireControls();
     startClock();
+    startWeather();
   }
 
   function wireControls() {
@@ -98,6 +102,9 @@
     $('rss-toggle').addEventListener('click', toggleRssPane);
     $('rss-add').addEventListener('submit', onAddFeed);
     $('rss-refresh').addEventListener('click', () => loadAllFeeds(true));
+
+    $('web-search').addEventListener('submit', onWebSearch);
+    wireGroupReorder();
 
     const filter = $('filter');
     filter.addEventListener('input', applyFilter);
@@ -581,7 +588,7 @@
     const container = $('groups-container');
     container.innerHTML = '';
 
-    const groups = config?.groups || [];
+    const groups = orderedGroups(config?.groups || []);
     if (!groups.length) {
       container.innerHTML =
         '<div class="empty-state">No services configured yet.<br>' +
@@ -589,28 +596,38 @@
       return;
     }
 
+    const collapsed = loadCollapsed();
     groups.forEach((group) => {
       const card = document.createElement('div');
-      card.className = 'group';
+      card.className = 'group' + (collapsed.has(group.name) ? ' collapsed' : '');
+      card.dataset.group = group.name;
       card.style.setProperty('--span', spanFor(group));
       card.innerHTML = `
         <div class="group-header">
+          <span class="group-drag" title="Drag to reorder" aria-hidden="true" draggable="true">⠿</span>
           <span class="group-name">${esc(group.name)}</span>
+          <span class="group-collapse" aria-hidden="true">▾</span>
         </div>
         <div class="service-list"></div>
       `;
 
+      const header = card.querySelector('.group-header');
       const iconNode = buildIcon(group.icon, group.name, false);
       if (iconNode) {
         const wrap = document.createElement('span');
         wrap.className = 'group-icon';
         wrap.appendChild(iconNode);
-        const header = card.querySelector('.group-header');
-        header.insertBefore(wrap, header.firstChild);
+        header.insertBefore(wrap, header.querySelector('.group-name'));
       }
+      // Click the header (but not the drag grip) to collapse/expand.
+      header.addEventListener('click', (e) => {
+        if (e.target.closest('.group-drag')) return;
+        toggleCollapse(group.name, card);
+      });
 
       container.appendChild(card);
       addResizeHandle(card, group);
+      enableGroupDrag(card);
 
       const list = card.querySelector('.service-list');
       (group.services || []).forEach((svc) => {
@@ -630,7 +647,8 @@
     a.dataset.key = `${group.name}::${svc.name}`;
 
     const dotHtml = svc.check
-      ? `<span class="status-dot unknown" role="img" data-key="${esc(group.name)}::${esc(svc.name)}" aria-label="Checking…" title="Checking…"></span>`
+      ? `<span class="service-status"><span class="svc-uptime"></span>` +
+        `<span class="status-dot unknown" role="img" data-key="${esc(group.name)}::${esc(svc.name)}" aria-label="Checking…" title="Checking…"></span></span>`
       : '';
 
     a.innerHTML = `
@@ -674,6 +692,11 @@
       dot.className = 'status-dot ' + (info?.status || 'unknown');
       dot.title = label;
       dot.setAttribute('aria-label', label);
+
+      const uptimeEl = dot.parentElement && dot.parentElement.querySelector('.svc-uptime');
+      if (uptimeEl) {
+        uptimeEl.textContent = info && info.uptime24 != null ? `${info.uptime24}%` : '';
+      }
     });
     updateSummary();
   }
@@ -700,11 +723,14 @@
 
   function statusLabel(info) {
     if (!info) return 'Checking…';
-    const ms = info.latency != null ? ` · ${info.latency} ms` : '';
-    if (info.status === 'up') return `Online (HTTP ${info.code})${ms}`;
     if (info.status === 'unknown') return 'Checking…';
-    if (info.error) return `Offline — ${info.error}${ms}`;
-    return `Offline (HTTP ${info.code ?? '?'})${ms}`;
+    const ms = info.latency != null ? ` · ${info.latency} ms` : '';
+    const up = info.uptime24 != null ? ` · ${info.uptime24}% 24h` : '';
+    // TCP checks have no HTTP code.
+    const http = info.code != null ? ` (HTTP ${info.code})` : '';
+    if (info.status === 'up') return `Online${http}${ms}${up}`;
+    if (info.error) return `Offline — ${info.error}${ms}${up}`;
+    return `Offline${info.code != null ? ` (HTTP ${info.code})` : ''}${ms}${up}`;
   }
 
   function scheduleRefresh() {
@@ -909,6 +935,137 @@
     } catch {}
     applyRssPane();
     if (willOpen) loadAllFeeds(false);
+  }
+
+  // ── Groups: collapse + reorder (remembered per browser) ──
+  function loadCollapsed() {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY)) || []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function toggleCollapse(name, card) {
+    const set = loadCollapsed();
+    if (set.has(name)) set.delete(name);
+    else set.add(name);
+    card.classList.toggle('collapsed', set.has(name));
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...set]));
+    } catch {}
+  }
+
+  function loadOrder() {
+    try {
+      const o = JSON.parse(localStorage.getItem(ORDER_KEY));
+      return Array.isArray(o) ? o : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // Saved order first (in its stored sequence), then any new groups in config order.
+  function orderedGroups(groups) {
+    const order = loadOrder();
+    if (!order.length) return groups;
+    const rank = (g) => {
+      const i = order.indexOf(g.name);
+      return i === -1 ? Infinity : i;
+    };
+    return [...groups].sort((a, b) => rank(a) - rank(b));
+  }
+
+  function saveOrder() {
+    const names = [...document.querySelectorAll('#groups-container .group')].map((c) => c.dataset.group);
+    try {
+      localStorage.setItem(ORDER_KEY, JSON.stringify(names));
+    } catch {}
+  }
+
+  let draggingCard = null;
+
+  function enableGroupDrag(card) {
+    const handle = card.querySelector('.group-drag');
+    if (!handle) return;
+    handle.addEventListener('dragstart', (e) => {
+      draggingCard = card;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', card.dataset.group || '');
+    });
+    handle.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      draggingCard = null;
+      saveOrder();
+    });
+  }
+
+  function wireGroupReorder() {
+    $('groups-container').addEventListener('dragover', (e) => {
+      if (!draggingCard) return;
+      e.preventDefault();
+      const target = nearestGroup(e.clientX, e.clientY);
+      const container = $('groups-container');
+      if (!target) container.appendChild(draggingCard);
+      else if (target.before) container.insertBefore(draggingCard, target.el);
+      else container.insertBefore(draggingCard, target.el.nextSibling);
+    });
+  }
+
+  // Closest non-dragged card to the pointer, with a guess at before/after.
+  function nearestGroup(x, y) {
+    let best = null;
+    document.querySelectorAll('#groups-container .group:not(.dragging)').forEach((el) => {
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const dist = Math.hypot(x - cx, y - cy);
+      if (!best || dist < best.dist) {
+        best = { dist, el, before: y < cy - 4 || (Math.abs(y - cy) <= r.height / 2 && x < cx) };
+      }
+    });
+    return best;
+  }
+
+  // ── Header extras: web search + weather ──────────────
+  function applyHeaderExtras() {
+    const search = $('web-search');
+    if (search) search.hidden = config?.search === false;
+  }
+
+  function onWebSearch(e) {
+    e.preventDefault();
+    const input = $('web-search-input');
+    const q = (input.value || '').trim();
+    if (!q) return;
+    const tpl = typeof config?.search === 'string' ? config.search : 'https://www.google.com/search?q=%s';
+    window.open(tpl.replace('%s', encodeURIComponent(q)), '_blank', 'noopener');
+    input.value = '';
+  }
+
+  function startWeather() {
+    const w = config?.weather;
+    const el = $('weather');
+    if (!el || !w || w.latitude == null || w.longitude == null) return;
+    const unit = /f/i.test(w.units || w.unit || 'celsius') ? 'fahrenheit' : 'celsius';
+    const url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(w.latitude)}` +
+      `&longitude=${encodeURIComponent(w.longitude)}&current=temperature_2m&temperature_unit=${unit}`;
+    const fetchWeather = async () => {
+      try {
+        const data = await (await fetch(url)).json();
+        const t = data?.current?.temperature_2m;
+        if (t != null) {
+          el.textContent = `${Math.round(t)}${data?.current_units?.temperature_2m || (unit === 'fahrenheit' ? '°F' : '°C')}`;
+          el.hidden = false;
+        }
+      } catch {
+        /* keep the previous value */
+      }
+    };
+    fetchWeather();
+    setInterval(fetchWeather, 15 * 60 * 1000);
   }
 
   // ── Filter ───────────────────────────────────────────

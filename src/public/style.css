@@ -125,6 +125,33 @@ header {
 
 .clock:hover { color: var(--accent); }
 
+.weather {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.weather:hover { color: var(--accent); }
+
+.web-search { display: flex; }
+
+.web-search-input {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 0.8rem;
+  width: 150px;
+  transition: width var(--transition), border-color var(--transition);
+}
+
+.web-search-input::placeholder { color: var(--text-dim); }
+.web-search-input:focus { outline: none; border-color: var(--accent); width: 190px; }
+
 .icon-btn.clock-format {
   width: auto;
   padding: 0 9px;
@@ -292,7 +319,35 @@ main {
   display: flex;
   align-items: center;
   gap: 8px;
+  cursor: pointer; /* click to collapse/expand */
+  user-select: none;
 }
+
+/* Drag-to-reorder grip (appears on hover) */
+.group-drag {
+  cursor: grab;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.group:hover .group-drag { opacity: 0.6; }
+.group-drag:active { cursor: grabbing; }
+.group.dragging { opacity: 0.4; }
+
+/* Collapse caret + collapsed state */
+.group-collapse {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  transition: transform var(--transition);
+}
+
+.group.collapsed .group-collapse { transform: rotate(-90deg); }
+.group.collapsed .service-list { display: none; }
+.group.collapsed .resize-handle { display: none; }
 
 .group-icon {
   display: inline-flex;
@@ -436,7 +491,20 @@ main {
   justify-content: center;
 }
 
-/* ── Status dot ──────────────────────────────────────── */
+/* ── Status dot + 24h uptime ─────────────────────────── */
+.service-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.svc-uptime {
+  font-size: 0.62rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;
@@ -759,11 +827,15 @@ footer code {
   .status-summary { display: none; }
   .filter,
   .filter:focus { flex: 1 1 100%; width: auto; order: -1; } /* full-width row of its own */
+  .web-search { flex: 1 1 100%; order: -2; }
+  .web-search-input,
+  .web-search-input:focus { width: 100%; }
   #last-updated { margin-right: auto; } /* timestamp left, buttons to the right */
 
   /* Roomier tap targets on touch screens */
   .icon-btn { width: 38px; height: 38px; }
   .filter,
+  .web-search-input,
   .rss-input,
   .rss-add-btn { height: 38px; }
 

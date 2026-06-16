@@ -1,11 +1,14 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import net from 'node:net';
 import { checkService } from '../src/server.js';
 
 // A tiny configurable HTTP server stands in for a real service.
 let server;
 let base;
+let tcp;
+let tcpPort;
 const routes = {
   '/': (res) => res.end('ok'),
   '/health': (res) => res.end('healthy'),
@@ -27,9 +30,16 @@ before(async () => {
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
+
+  tcp = net.createServer((s) => s.end());
+  await new Promise((r) => tcp.listen(0, '127.0.0.1', r));
+  tcpPort = tcp.address().port;
 });
 
-after(() => server.close());
+after(() => {
+  server.close();
+  tcp.close();
+});
 
 const defaults = { timeout: 5 };
 
@@ -75,4 +85,20 @@ test('an unreachable host is reported as down', async () => {
   const r = await checkService({ url: 'http://127.0.0.1:1', check: true, timeout: 1 }, defaults);
   assert.equal(r.status, 'down');
   assert.equal(r.error, 'unreachable');
+});
+
+test('check: tcp reports up for an open port', async () => {
+  const r = await checkService({ url: `127.0.0.1:${tcpPort}`, check: 'tcp' }, defaults);
+  assert.equal(r.status, 'up');
+  assert.equal(typeof r.latency, 'number');
+});
+
+test('check: tcp reports down for a closed port', async () => {
+  const r = await checkService({ url: '127.0.0.1:1', check: 'tcp', timeout: 1 }, defaults);
+  assert.equal(r.status, 'down');
+});
+
+test('check: tcp accepts explicit host/port', async () => {
+  const r = await checkService({ host: '127.0.0.1', port: tcpPort, check: 'tcp' }, defaults);
+  assert.equal(r.status, 'up');
 });

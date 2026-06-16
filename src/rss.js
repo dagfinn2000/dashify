@@ -80,6 +80,7 @@ export async function fetchFeed(url, { timeoutMs = 8000, insecure = false, limit
     },
     timeoutMs,
     insecure,
+    maxRedirects: 5, // follow http→https / www redirects (e.g. NRK)
   });
   if (res.status >= 400) throw new Error(`feed responded with HTTP ${res.status}`);
   const feed = parseFeed(res.body, limit);

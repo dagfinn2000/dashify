@@ -10,6 +10,14 @@ columns: 3                 # number of service group columns (1-4)
 timeout: 5                 # default health-check timeout in seconds (per-service override below)
 status_cache_ttl: 5        # seconds the server caches results so open tabs share one check
 
+# Header extras
+search: true               # web-search box in the header (true/false, or a URL
+                           # template with %s, e.g. "https://duckduckgo.com/?q=%s")
+# weather:                 # show the current temperature in the header (Open-Meteo,
+#   latitude: 59.91        #   no API key needed) — set your coordinates
+#   longitude: 10.75
+#   units: celsius         # celsius | fahrenheit
+
 # RSS / Atom feeds shown in a pane to the left of your cards are configured in a
 # separate file, config/RSS.yaml, so this file stays tidy. You can also add and
 # remove feeds live from the dashboard itself.
@@ -86,6 +94,13 @@ groups:
         url: "http://192.168.1.100:3000"
         description: "Metrics & dashboards"
         check: true
+
+      # Non-HTTP services can be checked with a TCP connect (SSH, databases,
+      # game servers, …). Give host:port via the url, or explicit host/port.
+      - name: "NAS (SSH)"
+        url: "192.168.1.20:22"
+        description: "Storage"
+        check: tcp
 
   - name: "Network"
     services:

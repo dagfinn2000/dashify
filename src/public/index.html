@@ -31,11 +31,22 @@
         <div class="title-row">
           <h1 id="site-title">Dashify</h1>
           <span id="clock" class="clock" role="button" tabindex="0" title="Click to toggle 12/24-hour"></span>
+          <a id="weather" class="weather" href="https://www.google.com/search?q=weather" target="_blank" rel="noopener noreferrer" title="Weather" hidden></a>
         </div>
         <p id="site-subtitle"></p>
       </div>
       <div class="header-meta">
         <span id="status-summary" class="status-summary" aria-live="polite"></span>
+        <form id="web-search" class="web-search" hidden>
+          <input
+            id="web-search-input"
+            class="web-search-input"
+            type="search"
+            placeholder="Search the web…"
+            aria-label="Search the web"
+            autocomplete="off"
+          />
+        </form>
         <input
           id="filter"
           class="filter"
