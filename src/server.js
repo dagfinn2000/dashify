@@ -39,10 +39,37 @@ export function publicConfig(cfg) {
   };
 }
 
+const warnedVars = new Set();
+
+// Substitute ${VAR} / ${VAR:-default} in config values from the process
+// environment, so secrets (e.g. widget API keys) can come from a Docker
+// Compose .env file instead of being hard-coded in config.yaml.
+export function interpolateEnv(value) {
+  if (typeof value === 'string') {
+    return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g, (_m, name, def) => {
+      const v = process.env[name];
+      if (v != null && v !== '') return v;
+      if (def != null) return def;
+      if (!warnedVars.has(name)) {
+        warnedVars.add(name);
+        console.warn(`config: environment variable ${name} is not set`);
+      }
+      return '';
+    });
+  }
+  if (Array.isArray(value)) return value.map(interpolateEnv);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = interpolateEnv(v);
+    return out;
+  }
+  return value;
+}
+
 export function loadConfig(path = CONFIG_PATH) {
   try {
     const parsed = yaml.load(readFileSync(path, 'utf8')) || {};
-    return { ...DEFAULTS, ...parsed };
+    return { ...DEFAULTS, ...interpolateEnv(parsed) };
   } catch (e) {
     console.error('Failed to load config:', e.message);
     return { ...DEFAULTS };

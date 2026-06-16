@@ -118,7 +118,11 @@ groups:
 | `background` | top-level | Optional background image — a URL or a filename dropped in `config/` (see [Background image](#background-image)) |
 | `background_dim` | top-level | `0`–`1` scrim over the background so text stays readable (default `0.5`) |
 | `background_blur` | top-level | Pixels of blur applied to the background image (default `0`) |
+| `card_opacity` | top-level | Card translucency, `0`–`1` (default `1` = solid; lower looks great over a background) |
+| `card_blur` | top-level | Backdrop blur behind translucent cards, in pixels (default `0`) |
+| `colors` | top-level | Override theme colours — see [Colours & translucency](#colours--translucency) |
 | `name` / `icon` | group | Group card heading and optional icon |
+| `width` | group | Columns the card spans (`1`–`4`); also draggable in the UI (see [Resizing cards](#resizing-cards)) |
 | `name` / `url` | service | Link label and destination |
 | `icon` | service | Optional icon override (see [Icons](#icons)) — defaults to one resolved from the name |
 | `description` | service | Optional subtitle line |
@@ -165,6 +169,44 @@ Any file you place next to `config.yaml` is served under `/user/`, so the same
 mechanism works for custom service icons too. With Docker the `config/` folder is
 bind-mounted, so just drop the image in and refresh — no rebuild needed.
 
+### Colours & translucency
+
+Make cards translucent (great over a background image) and frost them:
+
+```yaml
+card_opacity: 0.7   # 0 = fully transparent, 1 = solid (default)
+card_blur: 8        # px backdrop blur behind the cards
+```
+
+Override any theme colour. Provide a flat map (applies to both themes) or
+separate `dark:` / `light:` maps:
+
+```yaml
+colors:
+  accent: "#f59e0b"
+  dark:
+    bg: "#0b0e14"
+    bg-card: "#111827"
+  light:
+    bg: "#eef2f7"
+```
+
+Overridable keys: `bg`, `bg-card`, `bg-card-hover`, `border`, `text`,
+`text-muted`, `text-dim`, `accent`, `up`, `down`, `header-bg`.
+
+### Resizing cards
+
+Give a group a `width:` to span multiple columns, or just **drag the right edge**
+of any card — your sizes are remembered per browser. Double-click the edge to
+reset a card to its configured width.
+
+```yaml
+groups:
+  - name: "Media"
+    width: 2     # span two columns
+    services: [ ... ]
+```
+
 ---
 
 ## Service widgets
@@ -186,6 +228,30 @@ Pi-hole's queries/blocked counts. Add a `widget:` block to a service:
 via `/api/widgets`; secrets are stripped from `/api/config`, so they never reach
 the browser. Results are cached for `widget_cache_ttl` seconds (default `30`).
 A widget inherits the service's `allow_insecure` and `timeout` unless overridden.
+
+### Secrets from a `.env` file
+
+Don't hard-code passwords in `config.yaml`. Any value can reference an
+environment variable as `${VAR}` (or `${VAR:-default}`), resolved when the config
+loads:
+
+```yaml
+widget:
+  type: pihole
+  key: "${PIHOLE_PASSWORD}"
+```
+
+With Docker Compose, put the secret in a `.env` file next to
+`docker-compose.yml` — it's loaded into the container (`env_file`) and is
+**gitignored**, so it never lands on GitHub:
+
+```bash
+cp .env.example .env      # then edit .env
+# .env:  PIHOLE_PASSWORD=your-app-password
+docker compose up -d
+```
+
+> Note: bare `key: ${VAR}` is invalid YAML — always quote it: `key: "${VAR}"`.
 
 ### Built-in providers
 

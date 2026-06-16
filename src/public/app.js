@@ -45,6 +45,7 @@
     await loadConfig();
     applyTheme();
     applyBackground();
+    applyAppearance();
     renderGroups();
     await refreshAll();
     scheduleRefresh();
@@ -128,6 +129,7 @@
     btn.innerHTML = theme === 'dark' ? SUN_SVG : MOON_SVG;
     btn.setAttribute('aria-label', theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
     btn.title = btn.getAttribute('aria-label');
+    applyColors();
   }
 
   function toggleTheme() {
@@ -154,6 +156,106 @@
     const dim = config.background_dim;
     root.style.setProperty('--bg-dim', String(dim == null ? 0.5 : Math.min(1, Math.max(0, dim))));
     document.body.classList.add('has-bg');
+  }
+
+  // ── Appearance (card translucency + custom colours) ──
+  const OVERRIDABLE = [
+    'bg', 'bg-card', 'bg-card-hover', 'border', 'text',
+    'text-muted', 'text-dim', 'accent', 'up', 'down', 'unknown', 'header-bg',
+  ];
+
+  function applyAppearance() {
+    const root = document.documentElement;
+    const opacity = config?.card_opacity;
+    root.style.setProperty('--card-opacity', `${(opacity == null ? 1 : Math.min(1, Math.max(0, opacity))) * 100}%`);
+    root.style.setProperty('--card-blur', `${Number(config?.card_blur) || 0}px`);
+  }
+
+  // Custom colours: a flat map applies to both themes; nested dark:/light:
+  // maps apply to the matching theme. Re-run on every theme change.
+  function applyColors() {
+    const root = document.documentElement;
+    OVERRIDABLE.forEach((k) => root.style.removeProperty(`--${k}`));
+
+    const colors = config?.colors;
+    if (!colors || typeof colors !== 'object') return;
+
+    const theme = root.classList.contains('theme-light') ? 'light' : 'dark';
+    // Flat keys apply to both themes; nested dark:/light: maps override per theme.
+    const { dark, light, ...flat } = colors;
+    const map = { ...flat, ...((theme === 'light' ? light : dark) || {}) };
+
+    for (const [key, value] of Object.entries(map)) {
+      const name = String(key).replace(/_/g, '-');
+      if (OVERRIDABLE.includes(name) && typeof value === 'string') {
+        root.style.setProperty(`--${name}`, value.replace(/[<>]/g, ''));
+      }
+    }
+  }
+
+  // ── Resizable cards (column span, remembered per browser) ──
+  const SPANS_KEY = 'dashify-spans';
+  let spanOverrides = (() => {
+    try {
+      return JSON.parse(localStorage.getItem(SPANS_KEY)) || {};
+    } catch {
+      return {};
+    }
+  })();
+
+  const gridCols = () => Math.min(4, Math.max(1, config?.columns || 3));
+
+  function spanFor(group) {
+    const v = spanOverrides[group.name] ?? group.width ?? 1;
+    return Math.min(gridCols(), Math.max(1, parseInt(v, 10) || 1));
+  }
+
+  function persistSpans() {
+    try {
+      localStorage.setItem(SPANS_KEY, JSON.stringify(spanOverrides));
+    } catch {}
+  }
+
+  function addResizeHandle(card, group) {
+    const handle = document.createElement('div');
+    handle.className = 'resize-handle';
+    handle.title = 'Drag to resize · double-click to reset';
+    card.appendChild(handle);
+
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      const container = $('groups-container');
+      const cols = gridCols();
+      const gap = parseFloat(getComputedStyle(container).columnGap) || 18;
+      const colWidth = (container.clientWidth - gap * (cols - 1)) / cols;
+      const startX = e.clientX;
+      const startWidth = card.offsetWidth;
+      handle.setPointerCapture(e.pointerId);
+      card.classList.add('resizing');
+
+      const onMove = (ev) => {
+        const dx = ev.clientX - startX;
+        let span = Math.round((startWidth + dx + gap) / (colWidth + gap));
+        span = Math.min(cols, Math.max(1, span));
+        card.style.setProperty('--span', span);
+      };
+      const onUp = () => {
+        handle.releasePointerCapture(e.pointerId);
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        card.classList.remove('resizing');
+        spanOverrides[group.name] = parseInt(card.style.getPropertyValue('--span'), 10) || 1;
+        persistSpans();
+      };
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+    });
+
+    handle.addEventListener('dblclick', () => {
+      delete spanOverrides[group.name];
+      persistSpans();
+      card.style.setProperty('--span', spanFor(group));
+    });
   }
 
   // ── Icons ────────────────────────────────────────────
@@ -284,6 +386,7 @@
     groups.forEach((group) => {
       const card = document.createElement('div');
       card.className = 'group';
+      card.style.setProperty('--span', spanFor(group));
       card.innerHTML = `
         <div class="group-header">
           <span class="group-name">${esc(group.name)}</span>
@@ -301,6 +404,7 @@
       }
 
       container.appendChild(card);
+      addResizeHandle(card, group);
 
       const list = card.querySelector('.service-list');
       (group.services || []).forEach((svc) => {

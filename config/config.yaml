@@ -22,10 +22,28 @@ icon_format: svg           # svg | png | webp
 # background_dim: 0.5      # 0-1 scrim over the image so text stays readable
 # background_blur: 0       # px of blur applied to the background image
 
+# Card appearance. Make cards translucent (nice over a background image) and
+# optionally frost them with a backdrop blur.
+# card_opacity: 1          # 0 (fully transparent) .. 1 (solid, default)
+# card_blur: 0             # px backdrop blur behind translucent cards
+
+# Custom colours. Override any theme variable; provide a flat map (applies to
+# both themes) or separate `dark:`/`light:` maps. Keys: bg, bg-card,
+# bg-card-hover, border, text, text-muted, text-dim, accent, up, down, header-bg.
+# colors:
+#   accent: "#f59e0b"
+#   dark:
+#     bg: "#0b0e14"
+#   light:
+#     bg: "#eef2f7"
+
 # Groups contain your services and quick links.
 # Each group appears as a card column on the dashboard.
+# A group may set `width:` to span multiple columns (1-4); you can also drag the
+# right edge of any card to resize it, and your sizes are remembered per browser.
 groups:
   - name: "Media"
+    # width: 2               # span two columns
     services:
       - name: "Jellyfin"
         url: "http://192.168.1.100:8096"
@@ -78,7 +96,7 @@ groups:
         widget:
           type: pihole
           url: "http://192.168.1.1"   # base URL, without /admin
-          key: "YOUR_PIHOLE_APP_PASSWORD_OR_API_TOKEN"
+          key: "${PIHOLE_PASSWORD}"   # from .env (see .env.example) — not committed
 
       - name: "Nginx Proxy Manager"
         url: "http://192.168.1.100:81"
@@ -87,7 +105,7 @@ groups:
         widget:
           type: npm
           username: "admin@example.com"
-          password: "YOUR_NPM_PASSWORD"
+          password: "${NPM_PASSWORD}"   # from .env (see .env.example)
 
       - name: "Uptime Kuma"
         url: "http://192.168.1.100:3001"

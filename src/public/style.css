@@ -209,13 +209,47 @@ main {
 
 /* ── Group card ──────────────────────────────────────── */
 .group {
-  background: var(--bg-card);
+  position: relative;
+  grid-column: span var(--span, 1);
+  background: var(--bg-card); /* fallback for browsers without color-mix */
+  background: color-mix(in srgb, var(--bg-card) var(--card-opacity, 100%), transparent);
+  -webkit-backdrop-filter: blur(var(--card-blur, 0px));
+  backdrop-filter: blur(var(--card-blur, 0px));
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
+
+/* Drag the right edge to resize a card across columns */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 10px;
+  height: 100%;
+  cursor: ew-resize;
+  touch-action: none;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  width: 3px;
+  height: 28px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.group:hover .resize-handle { opacity: 0.5; }
+.resize-handle:hover { opacity: 1 !important; }
+.group.resizing { user-select: none; }
 
 .group-header {
   padding: 14px 16px 10px;
@@ -409,6 +443,9 @@ footer code {
 /* ── Responsive ──────────────────────────────────────── */
 @media (max-width: 900px) {
   #groups-container { grid-template-columns: repeat(2, 1fr); }
+  /* custom spans/resize don't apply once the grid collapses */
+  .group { grid-column: auto; }
+  .resize-handle { display: none; }
 }
 
 @media (max-width: 560px) {
