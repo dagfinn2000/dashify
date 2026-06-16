@@ -73,6 +73,9 @@ const trimSlash = (s) => String(s || '').replace(/\/+$/, '');
 // Each provider receives the normalised widget config and returns
 // { fields: [{ label, value }] }. Throwing is fine — getWidget catches it.
 
+// A wrong password should be reported, not silently retried as v5.
+const authError = (msg) => Object.assign(new Error(msg), { authFailed: true });
+
 async function piholeV6(base, w) {
   const password = w.key || w.password;
   let sid = null;
@@ -84,13 +87,17 @@ async function piholeV6(base, w) {
       timeoutMs: w.timeoutMs,
       insecure: w.insecure,
     });
-    if (auth.json?.session?.valid === false) throw new Error('pi-hole auth failed');
+    // A JSON response from /api/auth means this *is* a v6 Pi-hole, so an invalid
+    // session is a wrong password — surface it rather than falling back to v5.
+    if (auth.json && auth.json.session && auth.json.session.valid === false) {
+      throw authError('pi-hole: wrong password (use a Pi-hole app password)');
+    }
     sid = auth.json?.session?.sid || null;
   }
   const headers = sid ? { 'X-FTL-SID': sid } : {};
   const url = `${base}/api/stats/summary` + (sid ? `?sid=${encodeURIComponent(sid)}` : '');
   const s = await requestJson(url, { headers, timeoutMs: w.timeoutMs, insecure: w.insecure });
-  if (s.status === 401) throw new Error('unauthorized');
+  if (s.status === 401) throw authError('pi-hole: unauthorized — check the password');
   const q = s.json?.queries;
   if (!q) throw new Error('no v6 data');
   // Politely end the session so we don't pile up sessions on the Pi-hole.
@@ -126,7 +133,8 @@ async function pihole(w) {
   const base = trimSlash(w.url);
   try {
     return { fields: await piholeV6(base, w) }; // Pi-hole v6 (REST API)
-  } catch {
+  } catch (e) {
+    if (e.authFailed) throw e; // don't mask a wrong password with a v5 retry
     return { fields: await piholeV5(base, w) }; // fall back to v5 (api.php)
   }
 }

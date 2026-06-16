@@ -251,7 +251,16 @@ cp .env.example .env      # then edit .env
 docker compose up -d
 ```
 
-> Note: bare `key: ${VAR}` is invalid YAML — always quote it: `key: "${VAR}"`.
+> **Quoting gotcha:** in `config.yaml` you *must* quote the reference
+> (`key: "${VAR}"`) because bare `{VAR}` is invalid YAML. In the **`.env` file**,
+> do **not** quote the value — write `PIHOLE_PASSWORD=mypassword`, not
+> `PIHOLE_PASSWORD="mypassword"`. Docker Compose keeps the quotes as part of the
+> value, which would send the wrong password.
+
+> **Pi-hole v6:** generate a dedicated **app password** in Pi-hole under
+> *Settings → Web interface / API → Configure app password*, and use that as the
+> `key`. If a widget can't authenticate, the card now shows the reason (e.g.
+> "pi-hole: wrong password").
 
 ### Built-in providers
 

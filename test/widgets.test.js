@@ -35,7 +35,19 @@ before(async () => {
 
     // Pi-hole v6
     if (p === '/api/auth' && m === 'POST') {
-      return send(res, 200, { session: { valid: true, sid: 'SID123', validity: 1800 } });
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        let pw;
+        try {
+          pw = JSON.parse(body).password;
+        } catch {
+          /* ignore */
+        }
+        if (pw === 'wrong') return send(res, 200, { session: { valid: false } });
+        return send(res, 200, { session: { valid: true, sid: 'SID123', validity: 1800 } });
+      });
+      return;
     }
     if (p === '/api/auth' && m === 'DELETE') return send(res, 200, {});
     if (p === '/api/stats/summary') {
@@ -96,6 +108,13 @@ test('pi-hole v6 reports queries/blocked/%', async () => {
   assert.equal(valueOf(out, 'Blocked'), '4,000');
   assert.equal(valueOf(out, 'Domains'), '5,678');
   assert.ok(out.fields.some((f) => f.label === 'Blocked' && f.value === '20.0%'));
+});
+
+test('pi-hole reports a wrong password instead of silently retrying v5', async () => {
+  const out = await getWidget({ type: 'pihole', url: base, key: 'wrong' });
+  assert.ok(out.error, 'expected an error');
+  assert.match(out.error, /wrong password|unauthorized/i);
+  assert.ok(!out.fields || out.fields.length === 0, 'must not fall back to v5');
 });
 
 test('pi-hole falls back to v5 when v6 is unavailable', async () => {

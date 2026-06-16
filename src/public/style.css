@@ -374,6 +374,33 @@ main {
   color: var(--text-dim);
 }
 
+.widget-error {
+  font-size: 0.68rem;
+  color: var(--down);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.widget-error::before {
+  content: '!';
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--down);
+  color: var(--bg-card);
+  font-size: 0.6rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* ── Status dot ──────────────────────────────────────── */
 .status-dot {
   width: 8px;

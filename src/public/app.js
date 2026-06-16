@@ -530,11 +530,19 @@
       if (!host) return;
       const w = widgetMap[a.dataset.key];
       const fields = w && Array.isArray(w.fields) ? w.fields : [];
+
       if (!fields.length) {
-        host.innerHTML = '';
-        host.style.display = 'none';
+        // Show the reason a widget produced nothing, so it's debuggable.
+        if (w && w.error) {
+          host.innerHTML = `<span class="widget-error" title="${esc(w.error)}">${esc(w.error)}</span>`;
+          host.style.display = '';
+        } else {
+          host.innerHTML = '';
+          host.style.display = 'none';
+        }
         return;
       }
+
       host.innerHTML = fields
         .map(
           (f) =>
