@@ -1,0 +1,12 @@
+# Dashify — RSS / Atom feeds
+# Feeds shown in the pane to the left of your cards. You can also add and remove
+# feeds live from the dashboard (those are saved in your browser); the list here
+# just seeds the pane on first load. Edits apply live — no restart needed.
+
+# A list of feed URLs (each entry may also be written as { url: ... }).
+feeds: []
+  # - https://news.ycombinator.com/rss
+  # - https://www.theverge.com/rss/index.xml
+
+item_limit: 6      # max items shown per feed (1-20)
+cache_ttl: 300     # seconds the server caches each fetched feed

@@ -115,9 +115,7 @@ groups:
 | `timeout` | top-level | Default health-check timeout in seconds (per-service `timeout` overrides it) |
 | `status_cache_ttl` | top-level | Seconds the server caches `/api/status` so multiple open tabs share one sweep (`0` disables) |
 | `widget_cache_ttl` | top-level | Seconds the server caches widget API data (default `30`, `0` disables) |
-| `rss` | top-level | RSS/Atom feed URLs that seed the feed pane (you can also add feeds in the browser) — see [RSS feeds](#rss-feeds) |
-| `rss_item_limit` | top-level | Max items shown per feed, `1`–`20` (default `6`) |
-| `rss_cache_ttl` | top-level | Seconds the server caches each fetched feed (default `300`) |
+| RSS feeds | `config/RSS.yaml` | Feeds shown in the side pane live in their own file — see [RSS feeds](#rss-feeds) |
 | `icon_format` | top-level | dashboard-icons asset type: `svg` (default), `png`, or `webp` |
 | `background` | top-level | Optional background image — a URL or a filename dropped in `config/` (see [Background image](#background-image)) |
 | `background_dim` | top-level | `0`–`1` scrim over the background so text stays readable (default `0.5`) |
@@ -310,19 +308,22 @@ or remove feeds **right from the dashboard** — type a URL into the box and hit
 **Add**; your list is saved in the browser. Use the feed icon in the header to
 hide or show the whole pane.
 
-To ship default feeds for every browser, list them in `config.yaml`:
+To ship default feeds for every browser, list them in **`config/RSS.yaml`** (a
+separate file so your main `config.yaml` stays tidy):
 
 ```yaml
-rss:
+# config/RSS.yaml
+feeds:
   - https://news.ycombinator.com/rss
   - https://www.theverge.com/rss/index.xml
-rss_item_limit: 6      # max items per feed (1-20)
-rss_cache_ttl: 300     # seconds the server caches each feed
+item_limit: 6      # max items per feed (1-20)
+cache_ttl: 300     # seconds the server caches each feed
 ```
 
 Feeds are fetched and parsed **on the server** (so the browser isn't blocked by
-CORS) and cached for `rss_cache_ttl` seconds. Both RSS 2.0 and Atom are
-supported; each item links straight to the article.
+CORS) and cached for `cache_ttl` seconds. Both RSS 2.0 and Atom are supported;
+each item links straight to the article. `RSS.yaml` is reloaded live, like
+`config.yaml`.
 
 ---
 
@@ -366,6 +367,7 @@ sudo systemctl enable --now dashify
 ```
 dashify/
 ├── config/config.yaml     # your dashboard definition (edit this)
+├── config/RSS.yaml        # RSS/Atom feeds for the side pane
 ├── src/
 │   ├── server.js          # Express backend + health checks + live config reload
 │   └── public/            # static frontend (HTML/CSS/JS, no build step)
