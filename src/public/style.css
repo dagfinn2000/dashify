@@ -183,11 +183,11 @@ header {
   background: var(--unknown);
 }
 
-.status-summary.ok::before   { background: var(--up); }
-.status-summary.warn::before { background: var(--down); }
+.status-summary.ok::before { background: var(--up); }
+.status-summary.warn::before,
 .status-summary.down::before { background: var(--down); }
-.status-summary.ok   { color: var(--up); }
-.status-summary.warn { color: var(--down); }
+.status-summary.ok { color: var(--up); }
+.status-summary.warn,
 .status-summary.down { color: var(--down); }
 
 .icon-btn {
@@ -468,16 +468,6 @@ footer code {
   font-family: 'Fira Code', 'Cascadia Code', monospace;
   color: var(--accent);
 }
-
-/* ── Skeleton loader ─────────────────────────────────── */
-.skeleton {
-  background: linear-gradient(90deg, var(--border) 25%, var(--bg-card-hover) 50%, var(--border) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.2s infinite;
-  border-radius: 4px;
-}
-
-@keyframes shimmer { to { background-position: -200% 0; } }
 
 /* ── Colour editor panel ─────────────────────────────── */
 .color-panel {
