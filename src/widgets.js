@@ -5,7 +5,8 @@ import http from 'node:http';
 import https from 'node:https';
 
 // ── Low-level request helpers ─────────────────────────────────
-function request(urlStr, { method = 'GET', headers = {}, body = null, timeoutMs = 5000, insecure = false } = {}) {
+// Exported so other server modules (e.g. rss.js) reuse one HTTP path.
+export function request(urlStr, { method = 'GET', headers = {}, body = null, timeoutMs = 5000, insecure = false } = {}) {
   return new Promise((resolve, reject) => {
     let url;
     try {

@@ -8,6 +8,7 @@ A lightweight, self-hosted **status page and service dashboard** configured enti
 - Optional self-signed TLS support for homelab boxes (Proxmox, NPM, …)
 - Instant client-side filter (press `/`) and a one-click dark/light theme toggle that remembers your choice
 - Dark / light / auto themes, custom **background image**, and configurable columns
+- **RSS / Atom feed pane** beside your cards — add and remove feeds right from the dashboard
 - Edit `config/config.yaml` and changes apply **live** — no restart
 - Runs in Docker (non-root, with a healthcheck) or an LXC, exposed on port **6969**
 
@@ -114,6 +115,9 @@ groups:
 | `timeout` | top-level | Default health-check timeout in seconds (per-service `timeout` overrides it) |
 | `status_cache_ttl` | top-level | Seconds the server caches `/api/status` so multiple open tabs share one sweep (`0` disables) |
 | `widget_cache_ttl` | top-level | Seconds the server caches widget API data (default `30`, `0` disables) |
+| `rss` | top-level | RSS/Atom feed URLs that seed the feed pane (you can also add feeds in the browser) — see [RSS feeds](#rss-feeds) |
+| `rss_item_limit` | top-level | Max items shown per feed, `1`–`20` (default `6`) |
+| `rss_cache_ttl` | top-level | Seconds the server caches each fetched feed (default `300`) |
 | `icon_format` | top-level | dashboard-icons asset type: `svg` (default), `png`, or `webp` |
 | `background` | top-level | Optional background image — a URL or a filename dropped in `config/` (see [Background image](#background-image)) |
 | `background_dim` | top-level | `0`–`1` scrim over the background so text stays readable (default `0.5`) |
@@ -296,6 +300,29 @@ widget:
 `format` can be `number` (thousands separators) or `percent` (one decimal + `%`);
 `path` supports array indices (e.g. `system.load.0`). If an API can't be reached
 the card simply shows no stats — it never breaks the dashboard.
+
+---
+
+## RSS feeds
+
+A pane to the left of your cards shows headlines from any RSS or Atom feeds. Add
+or remove feeds **right from the dashboard** — type a URL into the box and hit
+**Add**; your list is saved in the browser. Use the feed icon in the header to
+hide or show the whole pane.
+
+To ship default feeds for every browser, list them in `config.yaml`:
+
+```yaml
+rss:
+  - https://news.ycombinator.com/rss
+  - https://www.theverge.com/rss/index.xml
+rss_item_limit: 6      # max items per feed (1-20)
+rss_cache_ttl: 300     # seconds the server caches each feed
+```
+
+Feeds are fetched and parsed **on the server** (so the browser isn't blocked by
+CORS) and cached for `rss_cache_ttl` seconds. Both RSS 2.0 and Atom are
+supported; each item links straight to the article.
 
 ---
 

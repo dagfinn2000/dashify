@@ -26,9 +26,12 @@
   };
 
   const CLOCK_KEY = 'dashify-clock';
+  const RSS_KEY = 'dashify-rss';
+  const RSS_PANE_KEY = 'dashify-rss-pane';
   let config = null;
   let statusMap = {};
   let widgetMap = {};
+  let feeds = [];
   let refreshTimer = null;
   let clockTimer = null;
   let clock24 = (() => {
@@ -47,7 +50,10 @@
     applyTheme();
     applyBackground();
     applyAppearance();
+    feeds = loadFeeds();
+    applyRssPane();
     renderGroups();
+    renderFeeds();
     await refreshAll();
     scheduleRefresh();
     wireControls();
@@ -88,6 +94,10 @@
         togglePanel(false);
       }
     });
+
+    $('rss-toggle').addEventListener('click', toggleRssPane);
+    $('rss-add').addEventListener('submit', onAddFeed);
+    $('rss-refresh').addEventListener('click', () => loadAllFeeds(true));
 
     const filter = $('filter');
     filter.addEventListener('input', applyFilter);
@@ -705,7 +715,7 @@
   }
 
   function refreshAll(force = false) {
-    return Promise.all([refreshStatus(force), refreshWidgets(force)]);
+    return Promise.all([refreshStatus(force), refreshWidgets(force), loadAllFeeds(force)]);
   }
 
   // ── Widgets (per-service API data) ───────────────────
@@ -747,6 +757,157 @@
         .join('');
       host.style.display = '';
     });
+  }
+
+  // ── RSS feeds (side pane) ────────────────────────────
+  function loadFeeds() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(RSS_KEY));
+      if (Array.isArray(stored)) return stored.filter((u) => typeof u === 'string');
+    } catch {}
+    // First run: seed from config.rss (entries may be strings or { url }).
+    return (config?.rss || [])
+      .map((f) => (typeof f === 'string' ? f : f && f.url))
+      .filter((u) => typeof u === 'string' && u);
+  }
+
+  function persistFeeds() {
+    try {
+      localStorage.setItem(RSS_KEY, JSON.stringify(feeds));
+    } catch {}
+  }
+
+  const rssItemLimit = () => Math.min(20, Math.max(1, parseInt(config?.rss_item_limit, 10) || 6));
+
+  function feedHost(url) {
+    try {
+      return new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+      return url;
+    }
+  }
+
+  function timeAgo(dateStr) {
+    const t = Date.parse(dateStr);
+    if (!Number.isFinite(t)) return '';
+    const secs = Math.max(0, (Date.now() - t) / 1000);
+    if (secs < 60) return 'now';
+    const mins = secs / 60;
+    if (mins < 60) return `${Math.floor(mins)}m`;
+    const hours = mins / 60;
+    if (hours < 24) return `${Math.floor(hours)}h`;
+    const days = hours / 24;
+    if (days < 7) return `${Math.floor(days)}d`;
+    return new Date(t).toLocaleDateString();
+  }
+
+  function buildFeedCard(url) {
+    const card = document.createElement('div');
+    card.className = 'rss-feed';
+    card.dataset.url = url;
+    card.innerHTML = `
+      <div class="rss-feed-head">
+        <span class="rss-feed-title" title="${esc(url)}">${esc(feedHost(url))}</span>
+        <button class="rss-remove" type="button" aria-label="Remove feed" title="Remove feed">✕</button>
+      </div>
+      <div class="rss-items"><div class="rss-loading">Loading…</div></div>
+    `;
+    card.querySelector('.rss-remove').addEventListener('click', () => removeFeed(url));
+    return card;
+  }
+
+  function renderFeeds() {
+    const list = $('rss-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!feeds.length) {
+      list.innerHTML = '<div class="rss-empty">No feeds yet — add an RSS or Atom URL above.</div>';
+      return;
+    }
+    feeds.forEach((url) => list.appendChild(buildFeedCard(url)));
+  }
+
+  function loadAllFeeds(force = false) {
+    // Skip the network when the pane is hidden; reload on reopen instead.
+    if (document.body.classList.contains('rss-hidden')) return Promise.resolve();
+    const cards = document.querySelectorAll('#rss-list .rss-feed');
+    return Promise.all([...cards].map((card) => loadFeedInto(card, force)));
+  }
+
+  async function loadFeedInto(card, force) {
+    const url = card.dataset.url;
+    const host = card.querySelector('.rss-items');
+    try {
+      const res = await fetch('/api/rss?url=' + encodeURIComponent(url) + (force ? '&fresh=1' : ''));
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      if (data.title) card.querySelector('.rss-feed-title').textContent = data.title;
+
+      const items = (data.items || []).slice(0, rssItemLimit());
+      if (!items.length) {
+        host.innerHTML = '<div class="rss-empty">No items.</div>';
+        return;
+      }
+      host.innerHTML = items
+        .map((it) => {
+          const date = it.date ? `<span class="rss-item-date">${esc(timeAgo(it.date))}</span>` : '';
+          return (
+            `<a class="rss-item" href="${esc(it.link || '#')}" target="_blank" rel="noopener noreferrer">` +
+            `<span class="rss-item-title">${esc(it.title || '(untitled)')}</span>${date}</a>`
+          );
+        })
+        .join('');
+    } catch (e) {
+      host.innerHTML = `<div class="rss-error" title="${esc(e.message || '')}">${esc(e.message || 'Failed to load')}</div>`;
+    }
+  }
+
+  function onAddFeed(e) {
+    e.preventDefault();
+    const input = $('rss-url');
+    let url = (input.value || '').trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    input.value = '';
+    if (feeds.includes(url)) return;
+
+    feeds.push(url);
+    persistFeeds();
+    const list = $('rss-list');
+    const empty = list.querySelector('.rss-empty');
+    if (empty) empty.remove();
+    const card = buildFeedCard(url);
+    list.appendChild(card);
+    loadFeedInto(card, true);
+  }
+
+  function removeFeed(url) {
+    feeds = feeds.filter((u) => u !== url);
+    persistFeeds();
+    renderFeeds();
+    loadAllFeeds(false);
+  }
+
+  function applyRssPane() {
+    let open = true;
+    try {
+      open = localStorage.getItem(RSS_PANE_KEY) !== 'closed';
+    } catch {}
+    document.body.classList.toggle('rss-hidden', !open);
+    const btn = $('rss-toggle');
+    if (btn) {
+      btn.setAttribute('aria-pressed', String(open));
+      btn.title = open ? 'Hide feeds' : 'Show feeds';
+    }
+  }
+
+  function toggleRssPane() {
+    const willOpen = document.body.classList.contains('rss-hidden');
+    try {
+      localStorage.setItem(RSS_PANE_KEY, willOpen ? 'open' : 'closed');
+    } catch {}
+    applyRssPane();
+    if (willOpen) loadAllFeeds(false);
   }
 
   // ── Filter ───────────────────────────────────────────
