@@ -6,6 +6,7 @@ import http from 'node:http';
 import https from 'node:https';
 import yaml from 'js-yaml';
 import { getWidget } from './widgets.js';
+import { fetchFeed } from './rss.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = process.env.CONFIG_PATH || join(__dirname, '..', 'config', 'config.yaml');
@@ -22,6 +23,9 @@ const DEFAULTS = Object.freeze({
   timeout: 5,           // seconds per health check (per-service override allowed)
   status_cache_ttl: 5,  // seconds the server caches /api/status across clients
   widget_cache_ttl: 30, // seconds the server caches widget API data across clients
+  rss: [],              // optional RSS/Atom feed URLs seeded into the side pane
+  rss_item_limit: 6,    // max items shown per feed
+  rss_cache_ttl: 300,   // seconds the server caches each fetched feed
 });
 
 // Strip server-only secrets (widget API keys/passwords) before sending config
@@ -242,10 +246,45 @@ app.get('/api/widgets', async (req, res) => {
   }
 });
 
+// Proxy + parse an RSS/Atom feed so the browser avoids CORS. The pane lets the
+// user add feeds at runtime, so the URL is supplied per-request; we accept any
+// http(s) URL (this is a single-user LAN dashboard) and cache each one briefly.
+const feedCache = new Map(); // url -> { at, data }
+
+app.get('/api/rss', async (req, res) => {
+  const url = String(req.query.url || '');
+  if (!/^https?:\/\//i.test(url)) {
+    return res.status(400).json({ error: 'invalid feed url' });
+  }
+
+  const ttl = (config.rss_cache_ttl ?? 300) * 1000;
+  const hit = feedCache.get(url);
+  if (req.query.fresh !== '1' && hit && ttl > 0 && Date.now() - hit.at < ttl) {
+    res.set('Cache-Control', 'no-store');
+    res.set('X-Dashify-Cache', 'hit');
+    return res.json(hit.data);
+  }
+
+  try {
+    const data = await fetchFeed(url, {
+      timeoutMs: (config.timeout ?? 5) * 1000,
+      limit: config.rss_item_limit ?? 6,
+    });
+    if (feedCache.size > 200) feedCache.clear(); // bound the cache
+    feedCache.set(url, { at: Date.now(), data });
+    res.set('Cache-Control', 'no-store');
+    res.set('X-Dashify-Cache', 'miss');
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: e.message || 'feed fetch failed' });
+  }
+});
+
 export function start(port = PORT) {
   config = loadConfig();
   statusCache.reset();
   widgetsCache.reset();
+  feedCache.clear();
 
   const server = app.listen(port, () => {
     console.log(`Dashify running on http://0.0.0.0:${port}`);
@@ -255,6 +294,7 @@ export function start(port = PORT) {
     config = loadConfig();
     statusCache.reset();
     widgetsCache.reset();
+    feedCache.clear();
     console.log('Config reloaded');
   });
 

@@ -10,6 +10,15 @@ columns: 3                 # number of service group columns (1-4)
 timeout: 5                 # default health-check timeout in seconds (per-service override below)
 status_cache_ttl: 5        # seconds the server caches results so open tabs share one check
 
+# RSS / Atom feeds shown in a pane to the left of your cards. You can also add
+# and remove feeds live from the dashboard (saved in your browser); these seed
+# the pane on first load. Each entry is a feed URL (or { url: ... }).
+# rss:
+#   - https://news.ycombinator.com/rss
+#   - https://www.theverge.com/rss/index.xml
+# rss_item_limit: 6          # max items shown per feed (1-20)
+# rss_cache_ttl: 300         # seconds the server caches each fetched feed
+
 # Icons resolve automatically from https://github.com/homarr-labs/dashboard-icons
 # based on each service's name — no need to set an icon for common services.
 # Override per service with `icon:` (a slug like "pi-hole", an emoji, a URL, or a
