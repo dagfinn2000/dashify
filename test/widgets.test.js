@@ -84,6 +84,40 @@ before(async () => {
       return send(res, 200, [{ Snapshots: [{ RunningContainerCount: 5, StoppedContainerCount: 2 }] }]);
     }
 
+    // Sonarr / Radarr (v3)
+    if (p === '/api/v3/series') return send(res, 200, [{}, {}, {}]);
+    if (p === '/api/v3/movie') return send(res, 200, [{}, {}]);
+    if (p === '/api/v3/queue') return send(res, 200, { totalRecords: 4 });
+    if (p === '/api/v3/calendar') return send(res, 200, [{}, {}]);
+
+    // qBittorrent
+    if (p === '/api/v2/auth/login') {
+      res.writeHead(200, { 'content-type': 'text/plain', 'set-cookie': 'SID=abc; path=/' });
+      return res.end('Ok.');
+    }
+    if (p === '/api/v2/transfer/info') return send(res, 200, { dl_info_speed: 1048576, up_info_speed: 0 });
+    if (p === '/api/v2/torrents/info') {
+      return send(res, 200, [{ dlspeed: 100, upspeed: 0 }, { dlspeed: 0, upspeed: 0 }]);
+    }
+
+    // Jellyfin
+    if (p === '/Sessions') return send(res, 200, [{ NowPlayingItem: {} }, {}]);
+
+    // Plex
+    if (p === '/status/sessions') return send(res, 200, { MediaContainer: { size: 2, Metadata: [{}, {}] } });
+
+    // Proxmox
+    if (p === '/api2/json/nodes') return send(res, 200, { data: [{ status: 'online', cpu: 0.5, mem: 8, maxmem: 16 }] });
+    if (p === '/api2/json/cluster/resources') {
+      return send(res, 200, { data: [{ status: 'running' }, { status: 'stopped' }] });
+    }
+
+    // Uptime Kuma (Prometheus metrics)
+    if (p === '/metrics') {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      return res.end('monitor_status{monitor_name="a"} 1\nmonitor_status{monitor_name="b"} 0\n');
+    }
+
     // Generic JSON
     if (p === '/generic') return send(res, 200, { data: { count: 42, ratio: 12.345 }, name: 'ok' });
 
@@ -162,6 +196,50 @@ test('generic json maps fields by dot-path', async () => {
 test('a failing widget returns an error, not a throw', async () => {
   const out = await getWidget({ type: 'pihole', url: 'http://127.0.0.1:1', timeout: 1 });
   assert.ok(out.error);
+});
+
+test('sonarr reports library/queue/upcoming', async () => {
+  const out = await getWidget({ type: 'sonarr', url: base, key: 'k' });
+  assert.equal(valueOf(out, 'Series'), '3');
+  assert.equal(valueOf(out, 'Queue'), '4');
+  assert.equal(valueOf(out, 'Upcoming'), '2');
+});
+
+test('radarr reports the movie library', async () => {
+  const out = await getWidget({ type: 'radarr', url: base, key: 'k' });
+  assert.equal(valueOf(out, 'Movies'), '2');
+});
+
+test('qbittorrent reports active torrents and rates', async () => {
+  const out = await getWidget({ type: 'qbittorrent', url: base, username: 'admin', password: 'p' });
+  assert.equal(valueOf(out, 'Active'), '1');
+  assert.equal(valueOf(out, 'Torrents'), '2');
+  assert.equal(valueOf(out, '↓'), '1.0 MB/s');
+});
+
+test('jellyfin counts streams and sessions', async () => {
+  const out = await getWidget({ type: 'jellyfin', url: base, key: 'k' });
+  assert.equal(valueOf(out, 'Streams'), '1');
+  assert.equal(valueOf(out, 'Sessions'), '2');
+});
+
+test('plex counts active streams', async () => {
+  const out = await getWidget({ type: 'plex', url: base, token: 't' });
+  assert.equal(valueOf(out, 'Streams'), '2');
+});
+
+test('proxmox reports CPU/RAM/VMs', async () => {
+  const out = await getWidget({ type: 'proxmox', url: base, token: 'u!t=x' });
+  assert.equal(valueOf(out, 'CPU'), '50.0%');
+  assert.equal(valueOf(out, 'RAM'), '50.0%');
+  assert.equal(valueOf(out, 'VMs'), '1');
+});
+
+test('uptime-kuma tallies monitor_status lines', async () => {
+  const out = await getWidget({ type: 'uptime-kuma', url: base, key: 'k' });
+  assert.equal(valueOf(out, 'Up'), '1');
+  assert.equal(valueOf(out, 'Down'), '1');
+  assert.equal(valueOf(out, 'Monitors'), '2');
 });
 
 test('publicConfig strips widget secrets but flags has_widget', () => {

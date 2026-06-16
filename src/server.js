@@ -4,6 +4,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import http from 'node:http';
 import https from 'node:https';
+import net from 'node:net';
 import yaml from 'js-yaml';
 import { getWidget } from './widgets.js';
 import { fetchFeed } from './rss.js';
@@ -147,14 +148,59 @@ async function probe(urlStr, opts, maxRedirects = 5) {
   }
 }
 
+// A bare TCP connect — for services without an HTTP endpoint (SSH, databases,
+// game servers). Target comes from host/port, or is parsed out of `url`.
+function tcpTarget(service) {
+  if (service.host && service.port) return { host: String(service.host), port: Number(service.port) };
+  try {
+    const u = new URL(/:\/\//.test(service.url) ? service.url : `tcp://${service.url}`);
+    return { host: u.hostname, port: Number(u.port) || Number(service.port) || 0 };
+  } catch {
+    return {};
+  }
+}
+
+function tcpConnect(host, port, timeoutMs) {
+  return new Promise((resolvePromise, reject) => {
+    const socket = net.connect({ host, port });
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => {
+      socket.destroy();
+      resolvePromise();
+    });
+    socket.once('timeout', () => {
+      socket.destroy();
+      reject(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }));
+    });
+    socket.once('error', (e) => {
+      socket.destroy();
+      reject(e);
+    });
+  });
+}
+
 export async function checkService(service, defaults = config) {
   if (!service.check) return { status: 'unknown' };
+
+  const mode = service.check === true ? 'http' : String(service.check).toLowerCase();
+  const timeoutMs = (service.timeout ?? defaults.timeout ?? 5) * 1000;
+  const started = performance.now();
+
+  if (mode === 'tcp') {
+    const { host, port } = tcpTarget(service);
+    if (!host || !port) return { status: 'down', error: 'no host:port' };
+    try {
+      await tcpConnect(host, port, timeoutMs);
+      return { status: 'up', latency: Math.round(performance.now() - started) };
+    } catch (e) {
+      const timedOut = e.code === 'ETIMEDOUT' || /timeout/i.test(e.message || '');
+      return { status: 'down', error: timedOut ? 'timeout' : 'unreachable', latency: Math.round(performance.now() - started) };
+    }
+  }
 
   const target = service.check_path
     ? new URL(service.check_path, service.url).href
     : service.url;
-  const timeoutMs = (service.timeout ?? defaults.timeout ?? 5) * 1000;
-  const started = performance.now();
 
   try {
     const code = await probe(target, {
@@ -187,7 +233,40 @@ async function forEachService(filter, task) {
   return results;
 }
 
-const computeStatus = () => forEachService((s) => s.check, (s) => checkService(s));
+// In-memory rolling history of each service's up/down samples, so we can report
+// an uptime percentage over the last 24h. Reset on restart (no persistence).
+const statusHistory = new Map(); // key -> [{ t, up }]
+const HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function recordHistory(results) {
+  const now = Date.now();
+  const cutoff = now - HISTORY_WINDOW_MS;
+  for (const [key, r] of Object.entries(results)) {
+    if (!r || r.status === 'unknown') continue;
+    const arr = statusHistory.get(key) || [];
+    arr.push({ t: now, up: r.status === 'up' });
+    while (arr.length && arr[0].t < cutoff) arr.shift();
+    if (arr.length > 5000) arr.splice(0, arr.length - 5000); // safety cap
+    statusHistory.set(key, arr);
+  }
+}
+
+function uptime24(key) {
+  const arr = statusHistory.get(key);
+  if (!arr || !arr.length) return null;
+  const up = arr.reduce((n, s) => n + (s.up ? 1 : 0), 0);
+  return Math.round((up / arr.length) * 1000) / 10; // one decimal place
+}
+
+async function computeStatus() {
+  const results = await forEachService((s) => s.check, (s) => checkService(s));
+  recordHistory(results);
+  for (const [key, r] of Object.entries(results)) {
+    const u = uptime24(key);
+    if (u != null) r.uptime24 = u;
+  }
+  return results;
+}
 
 const computeWidgets = () =>
   forEachService(

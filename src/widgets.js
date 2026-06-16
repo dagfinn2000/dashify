@@ -6,7 +6,9 @@ import https from 'node:https';
 
 // ── Low-level request helpers ─────────────────────────────────
 // Exported so other server modules (e.g. rss.js) reuse one HTTP path.
-export function request(urlStr, { method = 'GET', headers = {}, body = null, timeoutMs = 5000, insecure = false } = {}) {
+// Pass maxRedirects > 0 to follow 3xx redirects (feeds commonly 301 from
+// http→https or to add `www`); it defaults to 0 so widget calls are unaffected.
+export function request(urlStr, { method = 'GET', headers = {}, body = null, timeoutMs = 5000, insecure = false, maxRedirects = 0 } = {}) {
   return new Promise((resolve, reject) => {
     let url;
     try {
@@ -17,6 +19,12 @@ export function request(urlStr, { method = 'GET', headers = {}, body = null, tim
     }
     const lib = url.protocol === 'https:' ? https : http;
     const req = lib.request(url, { method, headers, rejectUnauthorized: !insecure }, (res) => {
+      if (maxRedirects > 0 && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume(); // drain so the socket is freed
+        const next = new URL(res.headers.location, url).href;
+        resolve(request(next, { method, headers, body, timeoutMs, insecure, maxRedirects: maxRedirects - 1 }));
+        return;
+      }
       let data = '';
       res.setEncoding('utf8');
       res.on('data', (chunk) => {
@@ -60,6 +68,20 @@ function fmtNum(v) {
 function fmtPct(v) {
   const n = num(v);
   return n == null ? '—' : `${n.toFixed(1)}%`;
+}
+
+// Bytes/second → human-readable transfer rate.
+function fmtRate(bytesPerSec) {
+  let n = num(bytesPerSec);
+  if (n == null) return '—';
+  if (n < 1) return '0 B/s';
+  const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i++;
+  }
+  return `${i === 0 || n >= 100 ? Math.round(n) : n.toFixed(1)} ${units[i]}`;
 }
 
 function getPath(obj, path) {
@@ -216,6 +238,184 @@ async function portainer(w) {
   };
 }
 
+// Sonarr / Radarr share the v3 API: library size, queue, and upcoming (7 days).
+async function arr(w, kind) {
+  const base = trimSlash(w.url);
+  const key = w.key || w.apikey || w.api_key || w.token || '';
+  const opt = { headers: { 'X-Api-Key': key }, timeoutMs: w.timeoutMs, insecure: w.insecure };
+  const libPath = kind === 'radarr' ? 'movie' : 'series';
+  const lib = await requestJson(`${base}/api/v3/${libPath}`, opt);
+  if (lib.status === 401) throw new Error(`${kind}: unauthorized — check the API key`);
+  const queue = await requestJson(`${base}/api/v3/queue?page=1&pageSize=1`, opt);
+  const start = new Date().toISOString();
+  const end = new Date(Date.now() + 7 * 864e5).toISOString();
+  const cal = await requestJson(`${base}/api/v3/calendar?start=${start}&end=${end}`, opt);
+  return {
+    fields: [
+      { label: kind === 'radarr' ? 'Movies' : 'Series', value: fmtNum(Array.isArray(lib.json) ? lib.json.length : null) },
+      { label: 'Queue', value: fmtNum(queue.json?.totalRecords) },
+      { label: 'Upcoming', value: fmtNum(Array.isArray(cal.json) ? cal.json.length : null) },
+    ],
+  };
+}
+const sonarr = (w) => arr(w, 'sonarr');
+const radarr = (w) => arr(w, 'radarr');
+
+async function qbittorrent(w) {
+  const base = trimSlash(w.url);
+  const user = w.username || w.user || 'admin';
+  const pass = w.password || w.pass || w.key || '';
+  const login = await request(`${base}/api/v2/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', Referer: base },
+    body: `username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`,
+    timeoutMs: w.timeoutMs,
+    insecure: w.insecure,
+  });
+  const cookie = (login.headers['set-cookie'] || []).map((c) => c.split(';')[0]).join('; ');
+  if (!cookie && !/ok/i.test(login.body || '')) throw new Error('qbittorrent: login failed');
+  const opt = { headers: cookie ? { Cookie: cookie } : {}, timeoutMs: w.timeoutMs, insecure: w.insecure };
+  const info = await requestJson(`${base}/api/v2/transfer/info`, opt);
+  const torrents = await requestJson(`${base}/api/v2/torrents/info`, opt);
+  const list = Array.isArray(torrents.json) ? torrents.json : [];
+  const active = list.filter((t) => (num(t.dlspeed) || 0) + (num(t.upspeed) || 0) > 0).length;
+  return {
+    fields: [
+      { label: 'Active', value: fmtNum(active) },
+      { label: 'Torrents', value: fmtNum(list.length) },
+      { label: '↓', value: fmtRate(info.json?.dl_info_speed) },
+      { label: '↑', value: fmtRate(info.json?.up_info_speed) },
+    ],
+  };
+}
+
+async function transmission(w) {
+  const base = trimSlash(w.url);
+  const rpc = /\/transmission\/rpc$/.test(base) ? base : `${base}/transmission/rpc`;
+  const headers = { 'content-type': 'application/json' };
+  if (w.username || w.password) {
+    headers.authorization = 'Basic ' + Buffer.from(`${w.username || ''}:${w.password || w.key || ''}`).toString('base64');
+  }
+  const body = JSON.stringify({ method: 'session-stats' });
+  let r = await request(rpc, { method: 'POST', headers, body, timeoutMs: w.timeoutMs, insecure: w.insecure });
+  if (r.status === 409) {
+    // Transmission hands back the required CSRF session id on the first 409.
+    headers['x-transmission-session-id'] = r.headers['x-transmission-session-id'] || '';
+    r = await request(rpc, { method: 'POST', headers, body, timeoutMs: w.timeoutMs, insecure: w.insecure });
+  }
+  let j = null;
+  try {
+    j = JSON.parse(r.body);
+  } catch {
+    /* leave null */
+  }
+  const s = j?.arguments;
+  if (!s) throw new Error('transmission: no data');
+  return {
+    fields: [
+      { label: 'Active', value: fmtNum(s.activeTorrentCount) },
+      { label: 'Torrents', value: fmtNum(s.torrentCount) },
+      { label: '↓', value: fmtRate(s.downloadSpeed) },
+      { label: '↑', value: fmtRate(s.uploadSpeed) },
+    ],
+  };
+}
+
+// Jellyfin / Emby: count sessions and how many are actively streaming.
+async function jellyfin(w) {
+  const base = trimSlash(w.url);
+  const key = w.key || w.apikey || w.api_key || w.token || '';
+  const r = await requestJson(`${base}/Sessions`, {
+    headers: { 'X-Emby-Token': key },
+    timeoutMs: w.timeoutMs,
+    insecure: w.insecure,
+  });
+  if (r.status === 401) throw new Error('jellyfin: unauthorized — check the API key');
+  const sessions = Array.isArray(r.json) ? r.json : [];
+  return {
+    fields: [
+      { label: 'Streams', value: fmtNum(sessions.filter((s) => s.NowPlayingItem).length) },
+      { label: 'Sessions', value: fmtNum(sessions.length) },
+    ],
+  };
+}
+
+async function plex(w) {
+  const base = trimSlash(w.url);
+  const token = w.token || w.key || w.apikey || '';
+  const r = await requestJson(`${base}/status/sessions?X-Plex-Token=${encodeURIComponent(token)}`, {
+    headers: { accept: 'application/json' },
+    timeoutMs: w.timeoutMs,
+    insecure: w.insecure,
+  });
+  if (r.status === 401) throw new Error('plex: unauthorized — check the token');
+  const mc = r.json?.MediaContainer;
+  if (!mc) throw new Error('plex: no data');
+  const streams = mc.size ?? (Array.isArray(mc.Metadata) ? mc.Metadata.length : 0);
+  return { fields: [{ label: 'Streams', value: fmtNum(streams) }] };
+}
+
+// Proxmox VE via an API token (tokenid + secret, or a prebuilt token string).
+async function proxmox(w) {
+  const base = trimSlash(w.url);
+  const token = w.token || (w.tokenid && w.secret ? `${w.tokenid}=${w.secret}` : w.key || '');
+  const opt = {
+    headers: token ? { Authorization: `PVEAPIToken=${token}` } : {},
+    timeoutMs: w.timeoutMs,
+    insecure: w.insecure,
+  };
+  const nodes = await requestJson(`${base}/api2/json/nodes`, opt);
+  if (nodes.status === 401) throw new Error('proxmox: unauthorized — check the API token');
+  let cpu = 0;
+  let mem = 0;
+  let maxmem = 0;
+  let online = 0;
+  for (const n of nodes.json?.data || []) {
+    if (n.status === 'online') {
+      cpu += num(n.cpu) || 0;
+      mem += num(n.mem) || 0;
+      maxmem += num(n.maxmem) || 0;
+      online++;
+    }
+  }
+  const vms = await requestJson(`${base}/api2/json/cluster/resources?type=vm`, opt);
+  const running = (vms.json?.data || []).filter((v) => v.status === 'running').length;
+  return {
+    fields: [
+      { label: 'CPU', value: fmtPct(online ? (cpu / online) * 100 : null) },
+      { label: 'RAM', value: fmtPct(maxmem ? (mem / maxmem) * 100 : null) },
+      { label: 'VMs', value: fmtNum(running) },
+    ],
+  };
+}
+
+// Uptime Kuma exposes a Prometheus /metrics endpoint (basic auth: API key as
+// the password). We tally monitor_status lines (1 = up).
+async function uptimekuma(w) {
+  const base = trimSlash(w.url);
+  const key = w.key || w.apikey || w.token || w.password || '';
+  const headers = key ? { authorization: 'Basic ' + Buffer.from(`:${key}`).toString('base64') } : {};
+  const r = await request(`${base}/metrics`, { headers, timeoutMs: w.timeoutMs, insecure: w.insecure });
+  if (r.status === 401) throw new Error('uptime-kuma: unauthorized — check the API key');
+  let up = 0;
+  let total = 0;
+  for (const line of (r.body || '').split('\n')) {
+    if (!line.startsWith('monitor_status')) continue;
+    const m = line.match(/\s(\d+)\s*$/);
+    if (!m) continue;
+    total++;
+    if (m[1] === '1') up++;
+  }
+  if (!total) throw new Error('uptime-kuma: no monitors found');
+  return {
+    fields: [
+      { label: 'Up', value: fmtNum(up) },
+      { label: 'Down', value: fmtNum(total - up) },
+      { label: 'Monitors', value: fmtNum(total) },
+    ],
+  };
+}
+
 // Generic provider: fetch any JSON API and map fields by dot-path.
 // widget: { type: json, url, headers?, method?, body?, mappings: [{label, path, format?, suffix?}] }
 async function json(w) {
@@ -248,6 +448,18 @@ const PROVIDERS = {
   npm,
   'nginx-proxy-manager': npm,
   portainer,
+  sonarr,
+  radarr,
+  qbittorrent,
+  qbit: qbittorrent,
+  transmission,
+  jellyfin,
+  emby: jellyfin,
+  plex,
+  proxmox,
+  pve: proxmox,
+  'uptime-kuma': uptimekuma,
+  uptimekuma,
   json,
 };
 

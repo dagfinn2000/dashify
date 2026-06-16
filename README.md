@@ -4,10 +4,11 @@ A lightweight, self-hosted **status page and service dashboard** configured enti
 
 - Quick links to all your services, grouped into cards
 - **Automatic service icons** from [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) — just name your service, no emoji wrangling
-- Live HTTP health checks with status dots, response-time tooltips, and an at-a-glance "up" summary
+- Live HTTP **and TCP** health checks with status dots, response-time tooltips, **24h uptime %**, and an at-a-glance "up" summary
+- **Service widgets** — live stats on the card for Pi-hole, AdGuard, NPM, Portainer, Sonarr/Radarr, qBittorrent/Transmission, Jellyfin/Plex, Proxmox, Uptime Kuma, or any JSON API
 - Optional self-signed TLS support for homelab boxes (Proxmox, NPM, …)
-- Instant client-side filter (press `/`) and a one-click dark/light theme toggle that remembers your choice
-- Dark / light / auto themes, custom **background image**, and configurable columns
+- Instant client-side filter (press `/`), an optional **web-search box**, and current **temperature** in the header
+- **Collapsible, drag-to-reorder** groups, plus dark / light / auto themes, custom **background image**, and configurable columns
 - **RSS / Atom feed pane** beside your cards — add and remove feeds right from the dashboard
 - Edit `config/config.yaml` and changes apply **live** — no restart
 - Runs in Docker (non-root, with a healthcheck) or an LXC, exposed on port **6969**
@@ -112,6 +113,8 @@ groups:
 | `theme` | top-level | `dark`, `light`, or `auto` (follow the browser/OS preference). A toggle in the header overrides this per-browser. |
 | `refresh_interval` | top-level | Seconds between status re-checks (`0` disables auto-refresh) |
 | `columns` | top-level | Number of group columns, `1`–`4` |
+| `search` | top-level | Web-search box in the header: `true` (Google, default), `false`, or a URL template with `%s` |
+| `weather` | top-level | Show the current temperature in the header (Open-Meteo, no API key): `{ latitude, longitude, units }` |
 | `timeout` | top-level | Default health-check timeout in seconds (per-service `timeout` overrides it) |
 | `status_cache_ttl` | top-level | Seconds the server caches `/api/status` so multiple open tabs share one sweep (`0` disables) |
 | `widget_cache_ttl` | top-level | Seconds the server caches widget API data (default `30`, `0` disables) |
@@ -128,7 +131,7 @@ groups:
 | `name` / `url` | service | Link label and destination |
 | `icon` | service | Optional icon override (see [Icons](#icons)) — defaults to one resolved from the name |
 | `description` | service | Optional subtitle line |
-| `check` | service | `true` to enable the live status dot |
+| `check` | service | `true` for an HTTP health check, or `tcp` for a bare TCP-connect check (SSH, databases, game servers — give `host:port` in `url`, or set `host`/`port`) |
 | `check_path` | service | Optional path appended to `url` for the health check |
 | `allow_insecure` | service | `true` to accept self-signed/invalid TLS certificates for this check |
 | `timeout` | service | Per-service health-check timeout in seconds |
@@ -138,7 +141,7 @@ groups:
 
 The status dot turns **green** when the service responds (HTTP < 400, or matches `expect_status`), **red** when it's unreachable or times out, and **gray** when `check` is off. Hover a dot to see the response time.
 
-**Tips:** press `/` to jump to the filter box, use the header toggle to switch theme, and a live clock sits next to the title — click it (or the `24h`/`12h` button) to switch between 24-hour and AM/PM. All of these are remembered in the browser.
+**Tips:** press `/` to jump to the filter box, use the header toggle to switch theme, and a live clock sits next to the title — click it (or the `24h`/`12h` button) to switch between 24-hour and AM/PM. **Click a group's header to collapse it, and drag the grip (⠿) in the header to reorder groups.** All of these are remembered in the browser.
 
 ### Icons
 
@@ -278,6 +281,13 @@ docker compose up -d
 | `adguard` | Queries, Blocked, Blocked % | `username` + `password` (AdGuard Home login) |
 | `npm` | Proxy hosts, Enabled, Disabled | `username` + `password` (Nginx Proxy Manager login) |
 | `portainer` | Running, Stopped (containers) | `key` (Portainer API access token) |
+| `sonarr` / `radarr` | Series/Movies, Queue, Upcoming (7 days) | `key` (API key) |
+| `qbittorrent` | Active, Torrents, ↓/↑ speed | `username` + `password` |
+| `transmission` | Active, Torrents, ↓/↑ speed | optional `username` + `password` |
+| `jellyfin` (`emby`) | Streams, Sessions | `key` (API key) |
+| `plex` | Streams | `token` (X-Plex-Token) |
+| `proxmox` (`pve`) | CPU %, RAM %, running VMs | `tokenid` + `secret` (API token) |
+| `uptime-kuma` | Up, Down, Monitors | `key` (API key — basic-auth password on `/metrics`) |
 | `json` | Whatever you map | optional `headers` |
 
 ### Anything else: the `json` provider
