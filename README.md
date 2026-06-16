@@ -15,14 +15,6 @@ A lightweight, self-hosted **status page and service dashboard** configured enti
 
 ---
 
-## Quick start
-
-> **Cloning a private repo.** This repository is private, so the LXC/host needs to authenticate to GitHub.
-> The simplest one-off method is a [Personal Access Token](https://github.com/settings/tokens) with `repo` scope:
-> ```bash
-> git clone https://<YOUR_TOKEN>@github.com/dagfinn2000/dashify.git
-> ```
-> Or set up an SSH key and use `git clone git@github.com:dagfinn2000/dashify.git`.
 
 ### Option A — Docker Compose (recommended)
 
