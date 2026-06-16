@@ -33,10 +33,19 @@
     tautulli: 'tautulli',
   };
 
+  const CLOCK_KEY = 'dashify-clock';
   let config = null;
   let statusMap = {};
   let widgetMap = {};
   let refreshTimer = null;
+  let clockTimer = null;
+  let clock24 = (() => {
+    try {
+      return localStorage.getItem(CLOCK_KEY) !== '12';
+    } catch {
+      return true;
+    }
+  })();
 
   const $ = (id) => document.getElementById(id);
 
@@ -50,6 +59,7 @@
     await refreshAll();
     scheduleRefresh();
     wireControls();
+    startClock();
   }
 
   function wireControls() {
@@ -59,6 +69,16 @@
     });
 
     $('theme-btn').addEventListener('click', toggleTheme);
+
+    $('clock-format-btn').addEventListener('click', toggleClockFormat);
+    const clock = $('clock');
+    clock.addEventListener('click', toggleClockFormat);
+    clock.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleClockFormat();
+      }
+    });
 
     buildColorPanel();
     $('palette-btn').addEventListener('click', (e) => {
@@ -156,6 +176,41 @@
       localStorage.setItem(THEME_KEY, next);
     } catch {}
     applyTheme();
+  }
+
+  // ── Clock ────────────────────────────────────────────
+  function formatTime(d) {
+    const m = String(d.getMinutes()).padStart(2, '0');
+    const s = String(d.getSeconds()).padStart(2, '0');
+    if (clock24) return `${String(d.getHours()).padStart(2, '0')}:${m}:${s}`;
+    const ampm = d.getHours() < 12 ? 'AM' : 'PM';
+    const h = d.getHours() % 12 || 12;
+    return `${h}:${m}:${s} ${ampm}`;
+  }
+
+  function updateClock() {
+    const el = $('clock');
+    if (el) el.textContent = formatTime(new Date());
+  }
+
+  function startClock() {
+    clearInterval(clockTimer);
+    updateClock();
+    clockTimer = setInterval(updateClock, 1000);
+    $('clock-format-btn').textContent = clock24 ? '24h' : '12h';
+  }
+
+  function toggleClockFormat() {
+    clock24 = !clock24;
+    try {
+      localStorage.setItem(CLOCK_KEY, clock24 ? '24' : '12');
+    } catch {}
+    $('clock-format-btn').textContent = clock24 ? '24h' : '12h';
+    updateClock();
+    // keep the "Updated" timestamp consistent with the chosen format
+    if (statusMap && Object.keys(statusMap).length) {
+      $('last-updated').textContent = 'Updated ' + formatTime(new Date());
+    }
   }
 
   // ── Background ───────────────────────────────────────
@@ -604,7 +659,7 @@
       const res = await fetch('/api/status' + (force ? '?fresh=1' : ''));
       statusMap = await res.json();
       applyStatus();
-      $('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+      $('last-updated').textContent = 'Updated ' + formatTime(new Date());
     } catch {
       $('last-updated').textContent = 'Status check failed';
     } finally {

@@ -99,11 +99,37 @@ header {
   gap: 16px;
 }
 
+.title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
 #site-title {
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text);
+}
+
+.clock {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.clock:hover { color: var(--accent); }
+
+.icon-btn.clock-format {
+  width: auto;
+  padding: 0 9px;
+  font-size: 0.72rem;
+  font-weight: 600;
 }
 
 #site-subtitle {

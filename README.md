@@ -136,7 +136,7 @@ groups:
 
 The status dot turns **green** when the service responds (HTTP < 400, or matches `expect_status`), **red** when it's unreachable or times out, and **gray** when `check` is off. Hover a dot to see the response time.
 
-**Tips:** press `/` to jump to the filter box, and use the header toggle to switch theme — your choice is remembered in the browser.
+**Tips:** press `/` to jump to the filter box, use the header toggle to switch theme, and a live clock sits next to the title — click it (or the `24h`/`12h` button) to switch between 24-hour and AM/PM. All of these are remembered in the browser.
 
 ### Icons
 
