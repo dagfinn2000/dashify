@@ -148,34 +148,29 @@ export async function checkService(service, defaults = config) {
   }
 }
 
-async function computeStatus() {
+// Run `task(service)` for every service matching `filter`, collecting the
+// results into a map keyed by `group::service`.
+async function forEachService(filter, task) {
   const results = {};
-  const checks = (config.groups || []).flatMap((group) =>
+  const jobs = (config.groups || []).flatMap((group) =>
     (group.services || [])
-      .filter((s) => s.check)
+      .filter(filter)
       .map(async (s) => {
-        results[`${group.name}::${s.name}`] = await checkService(s);
+        results[`${group.name}::${s.name}`] = await task(s);
       }),
   );
-  await Promise.allSettled(checks);
+  await Promise.allSettled(jobs);
   return results;
 }
 
-async function computeWidgets() {
-  const results = {};
-  const tasks = (config.groups || []).flatMap((group) =>
-    (group.services || [])
-      .filter((s) => s.widget && s.widget.type)
-      .map(async (s) => {
-        // Widgets inherit the service's TLS/timeout settings unless overridden.
-        const w = { allow_insecure: s.allow_insecure, timeout: s.timeout, ...s.widget };
-        w.url = w.url || s.url;
-        results[`${group.name}::${s.name}`] = await getWidget(w);
-      }),
+const computeStatus = () => forEachService((s) => s.check, (s) => checkService(s));
+
+const computeWidgets = () =>
+  forEachService(
+    (s) => s.widget && s.widget.type,
+    // Widgets inherit the service's TLS/timeout settings (and URL) unless overridden.
+    (s) => getWidget({ allow_insecure: s.allow_insecure, timeout: s.timeout, ...s.widget, url: s.widget.url || s.url }),
   );
-  await Promise.allSettled(tasks);
-  return results;
-}
 
 // Cache results briefly so multiple open tabs/clients share one sweep instead
 // of each hammering every service (or its API) on their own timer.

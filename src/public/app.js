@@ -4,10 +4,10 @@
   const ICON_CDN = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons';
   const EMOJI_RE = /\p{Extended_Pictographic}/u;
 
-  // Common keyword → dashboard-icons slug aliases (the repo uses hyphenated
-  // slugs; this lets people write the name they expect). Unknown values fall
-  // through to slug normalisation, then to an svg→png→monogram fallback chain,
-  // so *any* icon in the repo is referenceable by its slug.
+  // Keyword → dashboard-icons slug, only for names that differ from the repo's
+  // hyphenated slug. Anything not listed (Jellyfin, Portainer, …) falls through
+  // to slug normalisation, then an svg→png→monogram fallback chain, so *any*
+  // icon in the repo stays referenceable by its slug.
   const ICON_ALIASES = {
     pihole: 'pi-hole',
     adguard: 'adguard-home',
@@ -19,18 +19,10 @@
     hass: 'home-assistant',
     pve: 'proxmox',
     proxmoxve: 'proxmox',
-    vaultwarden: 'vaultwarden',
     bitwarden: 'vaultwarden',
-    qbittorrent: 'qbittorrent',
-    'qbit': 'qbittorrent',
+    qbit: 'qbittorrent',
     truenas: 'truenas-scale',
-    unifi: 'unifi',
     unificontroller: 'unifi',
-    homarr: 'homarr',
-    homepage: 'homepage',
-    jellyseerr: 'jellyseerr',
-    overseerr: 'overseerr',
-    tautulli: 'tautulli',
   };
 
   const CLOCK_KEY = 'dashify-clock';
@@ -231,11 +223,6 @@
   }
 
   // ── Appearance (card translucency + custom colours) ──
-  const OVERRIDABLE = [
-    'bg', 'bg-card', 'bg-card-hover', 'border', 'text',
-    'text-muted', 'text-dim', 'accent', 'up', 'down', 'unknown', 'header-bg',
-  ];
-
   function applyAppearance() {
     const root = document.documentElement;
     const opacity = config?.card_opacity;
@@ -261,6 +248,9 @@
     ['down', 'Offline'],
     ['unknown', 'Unknown'],
   ];
+
+  // The CSS variables config / the editor are allowed to override.
+  const OVERRIDABLE = COLOR_FIELDS.map(([key]) => key);
 
   let colorOverrides = (() => {
     try {
@@ -487,22 +477,29 @@
 
   const cdnIcon = (slug, fmt) => `${ICON_CDN}/${fmt}/${slug}.${fmt}`;
 
+  // Use external URLs, data/blob URIs and root-absolute paths verbatim;
+  // everything else is treated as a file in the user's config dir (/user/).
+  const isAbsoluteUrl = (v) =>
+    /^(https?:)?\/\//i.test(v) || /^(data|blob):/i.test(v) || String(v).startsWith('/');
+
+  const userAsset = (v) => '/user/' + String(v).replace(/^\/+/, '');
+
+  // The CDN source for a slug, plus the PNG fallback the repo always ships.
+  function slugIcon(value) {
+    const slug = resolveSlug(value);
+    const fmt = iconFormat();
+    return { src: cdnIcon(slug, fmt), pngFallback: fmt === 'png' ? null : cdnIcon(slug, 'png') };
+  }
+
   // Decide what an `icon` value means: external URL, local /user asset, or slug.
   function classifyIcon(raw) {
-    if (/^(https?:)?\/\//i.test(raw) || /^(data|blob):/i.test(raw) || raw.startsWith('/')) {
-      return { type: 'url', src: raw };
-    }
-    if (/\.[a-z0-9]{2,5}$/i.test(raw)) {
-      return { type: 'asset', src: '/user/' + raw.replace(/^\/+/, '') };
-    }
+    if (isAbsoluteUrl(raw)) return { type: 'url', src: raw };
+    if (/\.[a-z0-9]{2,5}$/i.test(raw)) return { type: 'asset', src: userAsset(raw) };
     return { type: 'slug' };
   }
 
   function resolveAssetUrl(value) {
-    if (/^(https?:)?\/\//i.test(value) || /^(data|blob):/i.test(value) || value.startsWith('/')) {
-      return value;
-    }
-    return '/user/' + value.replace(/^\/+/, '');
+    return isAbsoluteUrl(value) ? value : userAsset(value);
   }
 
   function hashHue(s) {
@@ -554,21 +551,13 @@
 
     let src;
     let pngFallback = null;
-    const fmt = iconFormat();
 
     if (raw) {
       const c = classifyIcon(raw);
-      if (c.type === 'url' || c.type === 'asset') {
-        src = c.src;
-      } else {
-        const slug = resolveSlug(raw);
-        src = cdnIcon(slug, fmt);
-        pngFallback = fmt !== 'png' ? cdnIcon(slug, 'png') : null;
-      }
+      if (c.type === 'slug') ({ src, pngFallback } = slugIcon(raw));
+      else src = c.src;
     } else if (derive) {
-      const slug = resolveSlug(name);
-      src = cdnIcon(slug, fmt);
-      pngFallback = fmt !== 'png' ? cdnIcon(slug, 'png') : null;
+      ({ src, pngFallback } = slugIcon(name));
     } else {
       return null;
     }
