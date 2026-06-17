@@ -71,6 +71,11 @@ To keep it running after logout, install it as a systemd service — see [Run as
 
 Everything lives in [`config/config.yaml`](config/config.yaml). Edit it and refresh the browser.
 
+> **Looking for every option in one place?** [`config/config.example.yaml`](config/config.example.yaml)
+> is a fully-annotated reference showing every setting and a service for each
+> widget provider — copy from it as needed. [`config/RSS.example.yaml`](config/RSS.example.yaml)
+> does the same for feeds.
+
 ```yaml
 title: "My Dashboard"
 subtitle: "Home Lab"      # optional
