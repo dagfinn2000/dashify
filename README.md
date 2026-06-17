@@ -8,7 +8,7 @@ A lightweight, self-hosted **status page and service dashboard** configured enti
 - **Service widgets** — live stats on the card for Pi-hole, AdGuard, NPM, Portainer, Sonarr/Radarr, qBittorrent/Transmission, Jellyfin/Plex, Proxmox, Uptime Kuma, or any JSON API
 - Optional self-signed TLS support for homelab boxes (Proxmox, NPM, …)
 - Instant client-side filter (press `/`), an optional **web-search box**, and current **weather** (temperature + condition icon) in the header
-- **Named tabs**, **collapsible** groups, and **drag-to-reorder** for both groups *and* the services inside them, plus dark / light / auto themes, custom **background image**, and configurable columns
+- **Named tabs**, **collapsible** groups, and **drag-to-reorder** for both groups *and* the services inside them, plus one-click **theme presets** (Dracula, Catppuccin, Nord, Tokyo Night, …), dark / light / auto modes, custom **background image**, and configurable columns
 - **RSS / Atom feed pane** beside your cards — add and remove feeds right from the dashboard
 - Edit `config/config.yaml` and changes apply **live** — no restart, and a YAML typo shows a clear error banner instead of a blank page
 - Runs in Docker (non-root, with a healthcheck) or an LXC, exposed on port **6969**
@@ -168,6 +168,19 @@ Any file you place next to `config.yaml` is served under `/user/`, so the same
 mechanism works for custom service icons too. With Docker the `config/` folder is
 bind-mounted, so just drop the image in and refresh — no rebuild needed.
 
+### Theme presets
+
+Don't want to fiddle with individual colours? Click the **palette icon** in the
+header and pick a ready-made theme — **Dracula**, **Catppuccin** (Mocha & Latte),
+**Nord**, **Tokyo Night**, **Gruvbox**, **Rosé Pine**, **Solarized**, or the
+built-in **Dark** / **Light**. The whole dashboard recolours instantly, and your
+choice is remembered per browser — separately for dark and light, so the header
+toggle can flip between, say, Dracula at night and Catppuccin Latte by day.
+
+Presets are a starting point: tweak any colour on top from the same panel, and
+**Copy YAML** hands you the full palette to paste into `config.yaml` (under
+`colors:`) so the look follows you to every device.
+
 ### Colours & translucency
 
 Make cards translucent (great over a background image) and frost them:
@@ -194,10 +207,11 @@ Overridable keys: `bg`, `bg-card`, `bg-card-hover`, `border`, `text`,
 `text-muted`, `text-dim`, `accent`, `up`, `down`, `header-bg`.
 
 **Edit colours in the browser.** Click the palette icon in the header to open a
-live colour editor. Changes apply instantly and are saved per browser (per
-theme), layered on top of anything in `config.yaml`. Use **Reset** to clear them,
-or **Copy YAML** to grab a `colors:` block to paste into `config.yaml` if you
-want the palette on every device.
+live editor — pick a [theme preset](#theme-presets) up top, then fine-tune any
+individual colour below. Changes apply instantly and are saved per browser (per
+theme), layered on top of anything in `config.yaml`. Use **Reset** to return to
+the built-in theme, or **Copy YAML** to grab a `colors:` block (preset plus your
+tweaks) to paste into `config.yaml` if you want the palette on every device.
 
 ### Resizing cards
 

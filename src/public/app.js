@@ -285,9 +285,10 @@
     root.style.setProperty('--card-blur', `${Number(config?.card_blur) || 0}px`);
   }
 
-  // Colours come from three layers, lowest to highest precedence:
-  //   1. the theme CSS class, 2. config.yaml `colors`, 3. the in-page editor
-  //      (per-theme, saved in this browser). Re-run on every theme change.
+  // Colours come from four layers, lowest to highest precedence:
+  //   1. the theme CSS class, 2. config.yaml `colors`, 3. a selected preset
+  //   theme, 4. the in-page editor (all per-theme, saved in this browser).
+  //   Re-run on every theme change.
   const COLORS_KEY = 'dashify-colors';
   const COLOR_FIELDS = [
     ['accent', 'Accent'],
@@ -306,6 +307,38 @@
 
   // The CSS variables config / the editor are allowed to override.
   const OVERRIDABLE = COLOR_FIELDS.map(([key]) => key);
+
+  // ── Preset themes ────────────────────────────────────
+  // Curated palettes selectable from the colour panel. `base: true` entries are
+  // the built-in Dark/Light themes (no overrides — just the CSS class). Each
+  // palette maps onto the overridable CSS variables above.
+  const PRESET_KEY = 'dashify-preset';
+  const PRESETS = [
+    { id: 'dark', name: 'Dark', mode: 'dark', base: true, swatch: ['#0f1117', '#6c8ef7', '#4ade80', '#f87171'] },
+    { id: 'light', name: 'Light', mode: 'light', base: true, swatch: ['#f1f5f9', '#4f6ef0', '#16a34a', '#dc2626'] },
+    { id: 'dracula', name: 'Dracula', mode: 'dark', colors: { bg: '#282a36', 'bg-card': '#343746', 'bg-card-hover': '#424458', border: '#44475a', text: '#f8f8f2', 'text-muted': '#a9adc8', 'text-dim': '#6272a4', accent: '#bd93f9', up: '#50fa7b', down: '#ff5555', unknown: '#6272a4', 'header-bg': '#21222c' } },
+    { id: 'catppuccin-mocha', name: 'Catppuccin Mocha', mode: 'dark', colors: { bg: '#1e1e2e', 'bg-card': '#313244', 'bg-card-hover': '#45475a', border: '#313244', text: '#cdd6f4', 'text-muted': '#a6adc8', 'text-dim': '#7f849c', accent: '#cba6f7', up: '#a6e3a1', down: '#f38ba8', unknown: '#6c7086', 'header-bg': '#181825' } },
+    { id: 'catppuccin-latte', name: 'Catppuccin Latte', mode: 'light', colors: { bg: '#eff1f5', 'bg-card': '#ffffff', 'bg-card-hover': '#e6e9ef', border: '#ccd0da', text: '#4c4f69', 'text-muted': '#6c6f85', 'text-dim': '#8c8fa1', accent: '#8839ef', up: '#40a02b', down: '#d20f39', unknown: '#9ca0b0', 'header-bg': '#e6e9ef' } },
+    { id: 'nord', name: 'Nord', mode: 'dark', colors: { bg: '#2e3440', 'bg-card': '#3b4252', 'bg-card-hover': '#434c5e', border: '#434c5e', text: '#eceff4', 'text-muted': '#d8dee9', 'text-dim': '#788192', accent: '#88c0d0', up: '#a3be8c', down: '#bf616a', unknown: '#4c566a', 'header-bg': '#2b303b' } },
+    { id: 'tokyo-night', name: 'Tokyo Night', mode: 'dark', colors: { bg: '#1a1b26', 'bg-card': '#24283b', 'bg-card-hover': '#2f334d', border: '#2f334d', text: '#c0caf5', 'text-muted': '#9aa5ce', 'text-dim': '#565f89', accent: '#7aa2f7', up: '#9ece6a', down: '#f7768e', unknown: '#565f89', 'header-bg': '#16161e' } },
+    { id: 'gruvbox', name: 'Gruvbox', mode: 'dark', colors: { bg: '#282828', 'bg-card': '#3c3836', 'bg-card-hover': '#504945', border: '#504945', text: '#ebdbb2', 'text-muted': '#bdae93', 'text-dim': '#928374', accent: '#fabd2f', up: '#b8bb26', down: '#fb4934', unknown: '#928374', 'header-bg': '#1d2021' } },
+    { id: 'rose-pine', name: 'Rosé Pine', mode: 'dark', colors: { bg: '#191724', 'bg-card': '#1f1d2e', 'bg-card-hover': '#26233a', border: '#26233a', text: '#e0def4', 'text-muted': '#908caa', 'text-dim': '#6e6a86', accent: '#c4a7e7', up: '#9ccfd8', down: '#eb6f92', unknown: '#6e6a86', 'header-bg': '#1f1d2e' } },
+    { id: 'solarized', name: 'Solarized Dark', mode: 'dark', colors: { bg: '#002b36', 'bg-card': '#073642', 'bg-card-hover': '#0a4350', border: '#0a4350', text: '#93a1a1', 'text-muted': '#839496', 'text-dim': '#586e75', accent: '#268bd2', up: '#859900', down: '#dc322f', unknown: '#586e75', 'header-bg': '#002028' } },
+  ];
+
+  const presetById = (id) => PRESETS.find((p) => p.id === id);
+  const presetSwatch = (p) => (p.colors ? [p.colors.bg, p.colors.accent, p.colors.up, p.colors.down] : p.swatch);
+
+  // Which preset is chosen for each mode (so the dark/light toggle can flip
+  // between, say, Dracula and Catppuccin Latte). null = the built-in base.
+  let presetSelection = (() => {
+    const o = store.getJSON(PRESET_KEY, {});
+    return { dark: o.dark || null, light: o.light || null };
+  })();
+
+  function persistPreset() {
+    store.setJSON(PRESET_KEY, presetSelection);
+  }
 
   let colorOverrides = (() => {
     const o = store.getJSON(COLORS_KEY, {});
@@ -337,7 +370,15 @@
       }
     }
 
-    // 3) in-page editor overrides for the active theme (highest precedence)
+    // 3) a selected preset theme for the active mode
+    const preset = presetById(presetSelection[theme]);
+    if (preset && preset.colors) {
+      for (const [name, value] of Object.entries(preset.colors)) {
+        if (OVERRIDABLE.includes(name)) root.style.setProperty(`--${name}`, value);
+      }
+    }
+
+    // 4) in-page editor overrides for the active theme (highest precedence)
     for (const [name, value] of Object.entries(colorOverrides[theme] || {})) {
       if (OVERRIDABLE.includes(name) && typeof value === 'string') {
         root.style.setProperty(`--${name}`, value);
@@ -345,6 +386,32 @@
     }
 
     syncColorInputs();
+    syncPresetSelection();
+  }
+
+  // Apply a preset: switch to its mode, remember it for that mode, and clear any
+  // manual tweaks so the theme shows cleanly. Base (Dark/Light) entries just
+  // clear the preset for their mode.
+  function selectPreset(id) {
+    const preset = presetById(id);
+    if (!preset) return;
+    const mode = preset.mode;
+    presetSelection[mode] = preset.base ? null : id;
+    persistPreset();
+    colorOverrides[mode] = {};
+    persistColors();
+    store.set(THEME_KEY, mode);
+    applyTheme();
+  }
+
+  function syncPresetSelection() {
+    const panel = $('color-panel');
+    if (!panel) return;
+    const theme = currentTheme();
+    const activeId = presetSelection[theme] || theme; // base id === mode
+    panel.querySelectorAll('.cp-preset').forEach((b) => {
+      b.classList.toggle('active', b.dataset.preset === activeId);
+    });
   }
 
   // ── In-page colour editor ────────────────────────────
@@ -364,12 +431,14 @@
     panel.id = 'color-panel';
     panel.className = 'color-panel';
     panel.setAttribute('role', 'dialog');
-    panel.setAttribute('aria-label', 'Customize colours');
+    panel.setAttribute('aria-label', 'Themes and colours');
     panel.innerHTML = `
       <div class="cp-header">
-        <span>Colours · <span class="cp-theme"></span></span>
+        <span>Theme</span>
         <button class="cp-close icon-btn" type="button" aria-label="Close">✕</button>
       </div>
+      <div class="cp-presets"></div>
+      <div class="cp-section-label">Fine-tune · <span class="cp-theme"></span></div>
       <div class="cp-rows"></div>
       <div class="cp-footer">
         <button class="cp-copy" type="button">Copy YAML</button>
@@ -377,6 +446,23 @@
         <span class="cp-note">Saved in this browser</span>
       </div>
     `;
+
+    const presets = panel.querySelector('.cp-presets');
+    PRESETS.forEach((p) => {
+      const [bg, accent, up, down] = presetSwatch(p);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cp-preset';
+      btn.dataset.preset = p.id;
+      btn.title = p.name;
+      btn.innerHTML =
+        `<span class="cp-preset-swatch" style="background:${bg}">` +
+        `<i style="background:${accent}"></i><i style="background:${up}"></i><i style="background:${down}"></i>` +
+        `</span><span class="cp-preset-name">${esc(p.name)}</span>`;
+      btn.addEventListener('click', () => selectPreset(p.id));
+      presets.appendChild(btn);
+    });
+
     const rows = panel.querySelector('.cp-rows');
     COLOR_FIELDS.forEach(([key, label]) => {
       const row = document.createElement('label');
@@ -395,8 +481,11 @@
     });
     panel.querySelector('.cp-close').addEventListener('click', () => togglePanel(false));
     panel.querySelector('.cp-reset').addEventListener('click', () => {
-      colorOverrides[currentTheme()] = {};
+      const theme = currentTheme();
+      colorOverrides[theme] = {};
       persistColors();
+      presetSelection[theme] = null; // back to the built-in base theme
+      persistPreset();
       applyColors();
     });
     panel.querySelector('.cp-copy').addEventListener('click', copyColorYaml);
@@ -418,12 +507,18 @@
     if (!panel) return;
     const show = force == null ? !panel.classList.contains('open') : force;
     panel.classList.toggle('open', show);
-    if (show) syncColorInputs();
+    if (show) {
+      syncColorInputs();
+      syncPresetSelection();
+    }
   }
 
   function copyColorYaml() {
     const theme = currentTheme();
-    const map = colorOverrides[theme] || {};
+    // Export the full effective palette (preset + manual tweaks) so a chosen
+    // theme can be baked into config.yaml for every device.
+    const preset = presetById(presetSelection[theme]);
+    const map = { ...((preset && preset.colors) || {}), ...(colorOverrides[theme] || {}) };
     const keys = Object.keys(map);
     const note = $('color-panel').querySelector('.cp-note');
     if (!keys.length) {
