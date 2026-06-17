@@ -463,10 +463,6 @@ const PROVIDERS = {
   json,
 };
 
-export function listProviders() {
-  return Object.keys(PROVIDERS);
-}
-
 export async function getWidget(widget) {
   const type = String(widget?.type || '').toLowerCase();
   const provider = PROVIDERS[type];

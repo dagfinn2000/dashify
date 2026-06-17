@@ -36,13 +36,32 @@
   let feeds = [];
   let refreshTimer = null;
   let clockTimer = null;
-  let clock24 = (() => {
-    try {
-      return localStorage.getItem(CLOCK_KEY) !== '12';
-    } catch {
-      return true;
-    }
-  })();
+  // localStorage wrapper that never throws (private mode / storage disabled).
+  const store = {
+    get: (key) => {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    },
+    set: (key, value) => {
+      try {
+        localStorage.setItem(key, value);
+      } catch {}
+    },
+    getJSON: (key, fallback) => {
+      try {
+        const v = JSON.parse(localStorage.getItem(key));
+        return v == null ? fallback : v;
+      } catch {
+        return fallback;
+      }
+    },
+    setJSON: (key, value) => store.set(key, JSON.stringify(value)),
+  };
+
+  let clock24 = store.get(CLOCK_KEY) !== '12';
 
   const $ = (id) => document.getElementById(id);
 
@@ -149,12 +168,8 @@
     '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
 
   function storedTheme() {
-    try {
-      const t = localStorage.getItem(THEME_KEY);
-      return t === 'light' || t === 'dark' ? t : null;
-    } catch {
-      return null;
-    }
+    const t = store.get(THEME_KEY);
+    return t === 'light' || t === 'dark' ? t : null;
   }
 
   function systemTheme() {
@@ -182,9 +197,7 @@
   function toggleTheme() {
     const current = document.documentElement.classList.contains('theme-light') ? 'light' : 'dark';
     const next = current === 'light' ? 'dark' : 'light';
-    try {
-      localStorage.setItem(THEME_KEY, next);
-    } catch {}
+    store.set(THEME_KEY, next);
     applyTheme();
   }
 
@@ -212,9 +225,7 @@
 
   function toggleClockFormat() {
     clock24 = !clock24;
-    try {
-      localStorage.setItem(CLOCK_KEY, clock24 ? '24' : '12');
-    } catch {}
+    store.set(CLOCK_KEY, clock24 ? '24' : '12');
     $('clock-format-btn').textContent = clock24 ? '24h' : '12h';
     updateClock();
     // keep the "Updated" timestamp consistent with the chosen format
@@ -271,21 +282,15 @@
   const OVERRIDABLE = COLOR_FIELDS.map(([key]) => key);
 
   let colorOverrides = (() => {
-    try {
-      const o = JSON.parse(localStorage.getItem(COLORS_KEY)) || {};
-      return { dark: o.dark || {}, light: o.light || {} };
-    } catch {
-      return { dark: {}, light: {} };
-    }
+    const o = store.getJSON(COLORS_KEY, {});
+    return { dark: o.dark || {}, light: o.light || {} };
   })();
 
   const currentTheme = () =>
     document.documentElement.classList.contains('theme-light') ? 'light' : 'dark';
 
   function persistColors() {
-    try {
-      localStorage.setItem(COLORS_KEY, JSON.stringify(colorOverrides));
-    } catch {}
+    store.setJSON(COLORS_KEY, colorOverrides);
   }
 
   function applyColors() {
@@ -409,13 +414,7 @@
 
   // ── Resizable cards (column span, remembered per browser) ──
   const SPANS_KEY = 'dashify-spans';
-  let spanOverrides = (() => {
-    try {
-      return JSON.parse(localStorage.getItem(SPANS_KEY)) || {};
-    } catch {
-      return {};
-    }
-  })();
+  let spanOverrides = store.getJSON(SPANS_KEY, {});
 
   const gridCols = () => Math.min(4, Math.max(1, config?.columns || 3));
 
@@ -425,9 +424,7 @@
   }
 
   function persistSpans() {
-    try {
-      localStorage.setItem(SPANS_KEY, JSON.stringify(spanOverrides));
-    } catch {}
+    store.setJSON(SPANS_KEY, spanOverrides);
   }
 
   function addResizeHandle(card, group) {
@@ -722,15 +719,14 @@
   }
 
   function statusLabel(info) {
-    if (!info) return 'Checking…';
-    if (info.status === 'unknown') return 'Checking…';
+    if (!info || info.status === 'unknown') return 'Checking…';
     const ms = info.latency != null ? ` · ${info.latency} ms` : '';
     const up = info.uptime24 != null ? ` · ${info.uptime24}% 24h` : '';
     // TCP checks have no HTTP code.
     const http = info.code != null ? ` (HTTP ${info.code})` : '';
     if (info.status === 'up') return `Online${http}${ms}${up}`;
     if (info.error) return `Offline — ${info.error}${ms}${up}`;
-    return `Offline${info.code != null ? ` (HTTP ${info.code})` : ''}${ms}${up}`;
+    return `Offline${http}${ms}${up}`;
   }
 
   function scheduleRefresh() {
@@ -788,10 +784,8 @@
 
   // ── RSS feeds (side pane) ────────────────────────────
   function loadFeeds() {
-    try {
-      const stored = JSON.parse(localStorage.getItem(RSS_KEY));
-      if (Array.isArray(stored)) return stored.filter((u) => typeof u === 'string');
-    } catch {}
+    const stored = store.getJSON(RSS_KEY, null);
+    if (Array.isArray(stored)) return stored.filter((u) => typeof u === 'string');
     // First run: seed from config.rss (entries may be strings or { url }).
     return (config?.rss || [])
       .map((f) => (typeof f === 'string' ? f : f && f.url))
@@ -799,9 +793,7 @@
   }
 
   function persistFeeds() {
-    try {
-      localStorage.setItem(RSS_KEY, JSON.stringify(feeds));
-    } catch {}
+    store.setJSON(RSS_KEY, feeds);
   }
 
   const rssItemLimit = () => Math.min(20, Math.max(1, parseInt(config?.rss_item_limit, 10) || 6));
@@ -916,10 +908,7 @@
   }
 
   function applyRssPane() {
-    let open = true;
-    try {
-      open = localStorage.getItem(RSS_PANE_KEY) !== 'closed';
-    } catch {}
+    const open = store.get(RSS_PANE_KEY) !== 'closed';
     document.body.classList.toggle('rss-hidden', !open);
     const btn = $('rss-toggle');
     if (btn) {
@@ -930,20 +919,14 @@
 
   function toggleRssPane() {
     const willOpen = document.body.classList.contains('rss-hidden');
-    try {
-      localStorage.setItem(RSS_PANE_KEY, willOpen ? 'open' : 'closed');
-    } catch {}
+    store.set(RSS_PANE_KEY, willOpen ? 'open' : 'closed');
     applyRssPane();
     if (willOpen) loadAllFeeds(false);
   }
 
   // ── Groups: collapse + reorder (remembered per browser) ──
   function loadCollapsed() {
-    try {
-      return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY)) || []);
-    } catch {
-      return new Set();
-    }
+    return new Set(store.getJSON(COLLAPSED_KEY, []));
   }
 
   function toggleCollapse(name, card) {
@@ -951,18 +934,12 @@
     if (set.has(name)) set.delete(name);
     else set.add(name);
     card.classList.toggle('collapsed', set.has(name));
-    try {
-      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...set]));
-    } catch {}
+    store.setJSON(COLLAPSED_KEY, [...set]);
   }
 
   function loadOrder() {
-    try {
-      const o = JSON.parse(localStorage.getItem(ORDER_KEY));
-      return Array.isArray(o) ? o : [];
-    } catch {
-      return [];
-    }
+    const o = store.getJSON(ORDER_KEY, null);
+    return Array.isArray(o) ? o : [];
   }
 
   // Saved order first (in its stored sequence), then any new groups in config order.
@@ -978,9 +955,7 @@
 
   function saveOrder() {
     const names = [...document.querySelectorAll('#groups-container .group')].map((c) => c.dataset.group);
-    try {
-      localStorage.setItem(ORDER_KEY, JSON.stringify(names));
-    } catch {}
+    store.setJSON(ORDER_KEY, names);
   }
 
   let draggingCard = null;

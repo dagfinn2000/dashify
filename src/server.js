@@ -323,27 +323,23 @@ app.get('/api/config', (_req, res) => {
   res.json(publicConfig(config));
 });
 
-app.get('/api/status', async (req, res) => {
-  try {
-    const { data, cached } = await statusCache.get(req.query.fresh === '1');
-    res.set('Cache-Control', 'no-store');
-    res.set('X-Dashify-Cache', cached ? 'hit' : 'miss');
-    res.json(data);
-  } catch {
-    res.status(500).json({ error: 'status check failed' });
-  }
-});
+// Both /api/status and /api/widgets are just a cached compute exposed as JSON,
+// with a shared "cache hit/miss" header and a `?fresh=1` bypass.
+function cachedRoute(path, cache, errorMessage) {
+  app.get(path, async (req, res) => {
+    try {
+      const { data, cached } = await cache.get(req.query.fresh === '1');
+      res.set('Cache-Control', 'no-store');
+      res.set('X-Dashify-Cache', cached ? 'hit' : 'miss');
+      res.json(data);
+    } catch {
+      res.status(500).json({ error: errorMessage });
+    }
+  });
+}
 
-app.get('/api/widgets', async (req, res) => {
-  try {
-    const { data, cached } = await widgetsCache.get(req.query.fresh === '1');
-    res.set('Cache-Control', 'no-store');
-    res.set('X-Dashify-Cache', cached ? 'hit' : 'miss');
-    res.json(data);
-  } catch {
-    res.status(500).json({ error: 'widget fetch failed' });
-  }
-});
+cachedRoute('/api/status', statusCache, 'status check failed');
+cachedRoute('/api/widgets', widgetsCache, 'widget fetch failed');
 
 // Proxy + parse an RSS/Atom feed so the browser avoids CORS. The pane lets the
 // user add feeds at runtime, so the URL is supplied per-request; we accept any
