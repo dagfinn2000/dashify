@@ -416,6 +416,73 @@ async function uptimekuma(w) {
   };
 }
 
+// Glances exposes a REST API (default port 61208) with one endpoint per plugin.
+// v4 lives under /api/4/, older releases under /api/3/ — same JSON shapes, so we
+// detect the version from the cpu endpoint and reuse it for the rest. Auth is
+// optional (running Glances with --password enables basic auth as user "glances").
+async function glances(w) {
+  const base = trimSlash(w.url);
+  const pw = w.password || w.key;
+  const headers = pw
+    ? { authorization: 'Basic ' + Buffer.from(`${w.username || 'glances'}:${pw}`).toString('base64') }
+    : {};
+  const opt = { headers, timeoutMs: w.timeoutMs, insecure: w.insecure };
+
+  const versions = w.api != null ? [String(w.api)] : ['4', '3'];
+  let ver = null;
+  let cpu = null;
+  for (const v of versions) {
+    const r = await requestJson(`${base}/api/${v}/cpu`, opt);
+    if (r.status === 401) throw new Error('glances: unauthorized — check the password');
+    if (r.json && r.json.total != null) {
+      ver = v;
+      cpu = r.json;
+      break;
+    }
+  }
+  if (!ver) throw new Error('glances: no data (is the Glances web/API server running?)');
+
+  const [mem, fs, load] = await Promise.all([
+    requestJson(`${base}/api/${ver}/mem`, opt),
+    requestJson(`${base}/api/${ver}/fs`, opt),
+    requestJson(`${base}/api/${ver}/load`, opt),
+  ]);
+
+  const disks = Array.isArray(fs.json) ? fs.json : [];
+  const disk = disks.find((d) => d.mnt_point === (w.mount || '/')) || disks[0];
+
+  const fields = [
+    { label: 'CPU', value: fmtPct(cpu.total) },
+    { label: 'RAM', value: fmtPct(mem.json?.percent) },
+  ];
+  if (disk) fields.push({ label: 'Disk', value: fmtPct(disk.percent) });
+  const min1 = load.json?.min1;
+  if (min1 != null) fields.push({ label: 'Load', value: String(Math.round(Number(min1) * 100) / 100) });
+  return { fields };
+}
+
+// Overseerr / Jellyseerr share an API: /api/v1/request/count breaks media
+// requests down by state. Auth is the API key in the X-Api-Key header.
+async function overseerr(w) {
+  const base = trimSlash(w.url);
+  const key = w.key || w.apikey || w.api_key || w.token || '';
+  const r = await requestJson(`${base}/api/v1/request/count`, {
+    headers: { 'X-Api-Key': key },
+    timeoutMs: w.timeoutMs,
+    insecure: w.insecure,
+  });
+  if (r.status === 401 || r.status === 403) throw new Error('overseerr: unauthorized — check the API key');
+  const j = r.json;
+  if (!j || j.total == null) throw new Error('overseerr: no data');
+  return {
+    fields: [
+      { label: 'Pending', value: fmtNum(j.pending) },
+      { label: 'Processing', value: fmtNum(j.processing) },
+      { label: 'Available', value: fmtNum(j.available) },
+    ],
+  };
+}
+
 // Generic provider: fetch any JSON API and map fields by dot-path.
 // widget: { type: json, url, headers?, method?, body?, mappings: [{label, path, format?, suffix?}] }
 async function json(w) {
@@ -460,6 +527,9 @@ const PROVIDERS = {
   pve: proxmox,
   'uptime-kuma': uptimekuma,
   uptimekuma,
+  glances,
+  overseerr,
+  jellyseerr: overseerr,
   json,
 };
 

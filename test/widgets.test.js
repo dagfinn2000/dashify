@@ -20,6 +20,28 @@ before(async () => {
     const p = url.pathname;
     const m = req.method;
 
+    // Glances v3-only sandbox (to exercise the v4→v3 fallback)
+    if (p.startsWith('/v3only')) {
+      if (p === '/v3only/api/3/cpu') return send(res, 200, { total: 9.9 });
+      if (p === '/v3only/api/3/mem') return send(res, 200, { percent: 50 });
+      if (p === '/v3only/api/3/fs') return send(res, 200, [{ mnt_point: '/', percent: 10 }]);
+      if (p === '/v3only/api/3/load') return send(res, 200, { min1: 1.5, min5: 1, min15: 1, cpucore: 4 });
+      return send(res, 404, { error: 'not found' });
+    }
+
+    // Glances v4
+    if (p === '/api/4/cpu') return send(res, 200, { total: 6.2 });
+    if (p === '/api/4/mem') return send(res, 200, { percent: 53.3 });
+    if (p === '/api/4/fs') {
+      return send(res, 200, [{ mnt_point: '/', percent: 45.1 }, { mnt_point: '/boot', percent: 12 }]);
+    }
+    if (p === '/api/4/load') return send(res, 200, { min1: 0.7, min5: 0.6, min15: 0.8, cpucore: 16 });
+
+    // Overseerr / Jellyseerr
+    if (p === '/api/v1/request/count') {
+      return send(res, 200, { total: 46, movie: 30, tv: 16, pending: 3, approved: 40, declined: 0, processing: 1, available: 42 });
+    }
+
     // Pi-hole v5-only sandbox
     if (p.startsWith('/v5only')) {
       if (p === '/v5only/admin/api.php') {
@@ -240,6 +262,32 @@ test('uptime-kuma tallies monitor_status lines', async () => {
   assert.equal(valueOf(out, 'Up'), '1');
   assert.equal(valueOf(out, 'Down'), '1');
   assert.equal(valueOf(out, 'Monitors'), '2');
+});
+
+test('glances reports CPU/RAM/Disk/Load', async () => {
+  const out = await getWidget({ type: 'glances', url: base });
+  assert.equal(valueOf(out, 'CPU'), '6.2%');
+  assert.equal(valueOf(out, 'RAM'), '53.3%');
+  assert.equal(valueOf(out, 'Disk'), '45.1%'); // the "/" filesystem, not /boot
+  assert.equal(valueOf(out, 'Load'), '0.7');
+});
+
+test('glances falls back to the v3 API when v4 is unavailable', async () => {
+  const out = await getWidget({ type: 'glances', url: base + '/v3only' });
+  assert.equal(valueOf(out, 'CPU'), '9.9%');
+  assert.equal(valueOf(out, 'Disk'), '10.0%');
+});
+
+test('overseerr reports request counts', async () => {
+  const out = await getWidget({ type: 'overseerr', url: base, key: 'k' });
+  assert.equal(valueOf(out, 'Pending'), '3');
+  assert.equal(valueOf(out, 'Processing'), '1');
+  assert.equal(valueOf(out, 'Available'), '42');
+});
+
+test('jellyseerr is an alias for the overseerr provider', async () => {
+  const out = await getWidget({ type: 'jellyseerr', url: base, key: 'k' });
+  assert.equal(valueOf(out, 'Pending'), '3');
 });
 
 test('publicConfig strips widget secrets but flags has_widget', () => {
