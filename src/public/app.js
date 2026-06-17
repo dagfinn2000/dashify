@@ -909,8 +909,9 @@
     a.dataset.desc = svc.description || '';
     a.dataset.key = `${group.name}::${svc.name}`;
 
+    const sparkHtml = svc.check && config?.sparklines ? '<span class="svc-spark" aria-hidden="true"></span>' : '';
     const dotHtml = svc.check
-      ? `<span class="service-status"><span class="svc-uptime"></span>` +
+      ? `<span class="service-status">${sparkHtml}<span class="svc-uptime"></span>` +
         `<span class="status-dot unknown" role="img" data-key="${esc(group.name)}::${esc(svc.name)}" aria-label="Checking…" title="Checking…"></span></span>`
       : '';
 
@@ -970,8 +971,41 @@
       if (uptimeEl) {
         uptimeEl.textContent = info && info.uptime24 != null ? `${info.uptime24}%` : '';
       }
+
+      const sparkEl = dot.parentElement && dot.parentElement.querySelector('.svc-spark');
+      if (sparkEl) renderSpark(sparkEl, info && info.spark);
     });
     updateSummary();
+  }
+
+  // Inline latency sparkline (opt-in via `sparklines: true`). Bars scale to the
+  // tallest sample in the window; down samples draw full-height in the down
+  // colour so outages stand out at a glance.
+  function renderSpark(el, spark) {
+    if (!Array.isArray(spark) || !spark.length) {
+      el.innerHTML = '';
+      el.style.display = 'none';
+      return;
+    }
+    const W = 2;
+    const GAP = 1;
+    const H = 14;
+    const max = Math.max(1, ...spark.map((s) => (typeof s.ms === 'number' ? s.ms : 0)));
+    const width = spark.length * W + (spark.length - 1) * GAP;
+    const bars = spark
+      .map((s, i) => {
+        const ms = typeof s.ms === 'number' ? s.ms : 0;
+        const h = s.up ? Math.max(2, Math.round((ms / max) * H)) : H;
+        return `<rect class="spark-bar ${s.up ? 'up' : 'down'}" x="${i * (W + GAP)}" y="${H - h}" width="${W}" height="${h}"></rect>`;
+      })
+      .join('');
+    el.innerHTML = `<svg viewBox="0 0 ${width} ${H}" width="${width}" height="${H}" preserveAspectRatio="none">${bars}</svg>`;
+    el.style.display = '';
+    const last = spark[spark.length - 1];
+    el.title =
+      last && typeof last.ms === 'number'
+        ? `Latency · last ${last.ms} ms, peak ${max} ms (${spark.length} checks)`
+        : `Last ${spark.length} checks`;
   }
 
   function updateSummary() {
