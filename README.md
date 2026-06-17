@@ -8,7 +8,7 @@ A lightweight, self-hosted **status page and service dashboard** configured enti
 - **Service widgets** — live stats on the card for Pi-hole, AdGuard, NPM, Portainer, Sonarr/Radarr, qBittorrent/Transmission, Jellyfin/Plex, Proxmox, Uptime Kuma, or any JSON API
 - Optional self-signed TLS support for homelab boxes (Proxmox, NPM, …)
 - Instant client-side filter (press `/`), an optional **web-search box**, and current **weather** (temperature + condition icon) in the header
-- **Named tabs**, **collapsible** groups, and **drag-to-reorder** for both groups *and* the services inside them, plus one-click **theme presets** (Dracula, Catppuccin, Nord, Tokyo Night, …), dark / light / auto modes, custom **background image**, and configurable columns
+- **Named tabs**, **collapsible** groups, and **drag-to-reorder** for both groups *and* the services inside them, plus one-click **theme presets** (Dracula, Catppuccin, Gruvbox, Everforest, Kanagawa, …), dark / light / auto modes, custom **background image**, and configurable columns
 - **RSS / Atom feed pane** beside your cards — add and remove feeds right from the dashboard
 - Edit `config/config.yaml` and changes apply **live** — no restart, and a YAML typo shows a clear error banner instead of a blank page
 - Runs in Docker (non-root, with a healthcheck) or an LXC, exposed on port **6969**
@@ -171,18 +171,17 @@ bind-mounted, so just drop the image in and refresh — no rebuild needed.
 ### Theme presets
 
 Don't want to fiddle with individual colours? Click the **palette icon** in the
-header and pick a ready-made theme. Seventeen are built in, grouped dark then
-light:
+header and pick a ready-made theme. Sixteen are built in — an even **eight dark
+and eight light**, leaning warm and earthy:
 
-- **Dark** — Dracula, Catppuccin Mocha, Nord, Tokyo Night, Gruvbox, Everforest,
-  Kanagawa, Rosé Pine, Solarized Dark
-- **Light** — Catppuccin Latte, Everforest Light, Gruvbox Light, Solarized Light,
-  Rosé Pine Dawn, One Light
-- Plus the built-in **Dark** and **Light**
+- **Dark** — the built-in Dark, Dracula, Catppuccin Mocha, Gruvbox, Everforest,
+  Kanagawa, Rosé Pine, Zenburn
+- **Light** — the built-in Light, Everforest Light, Gruvbox Light, Kanagawa Lotus,
+  Selenized Light, Solarized Light, Catppuccin Latte, Rosé Pine Dawn
 
 The whole dashboard recolours instantly, and your choice is remembered per
 browser — separately for dark and light, so the header toggle can flip between,
-say, Dracula at night and Gruvbox Light by day.
+say, Gruvbox at night and Kanagawa Lotus by day.
 
 Presets are a starting point: tweak any colour on top from the same panel, and
 **Copy YAML** hands you the full palette to paste into `config.yaml` (under
