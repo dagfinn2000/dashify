@@ -14,6 +14,7 @@ config_editor: true        # edit this file from the browser (gear icon → Sett
                            # raw file is shown to anyone who can reach the dashboard.
 status_glyphs: false       # default for colourblind-safe ✓/✕/? status glyphs (each
                            # browser can also toggle this from the palette panel)
+# sparklines: true         # small latency sparkline next to each service status dot
 
 # Header extras
 search: true               # web-search box in the header (true/false, or a URL

@@ -4,8 +4,8 @@ A lightweight, self-hosted **status page and service dashboard** configured enti
 
 - Quick links to all your services, grouped into cards
 - **Automatic service icons** from [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) — just name your service, no emoji wrangling
-- Live HTTP **and TCP** health checks with status dots, response-time tooltips, **24h uptime %**, and an at-a-glance "up" summary
-- **Service widgets** — live stats on the card for Pi-hole, AdGuard, NPM, Portainer, Sonarr/Radarr, qBittorrent/Transmission, Jellyfin/Plex, Proxmox, Uptime Kuma, or any JSON API
+- Live HTTP **and TCP** health checks with status dots, response-time tooltips, **24h uptime %**, an optional per-service **latency sparkline**, and an at-a-glance "up" summary
+- **Service widgets** — live stats on the card for Pi-hole, AdGuard, NPM, Portainer, Sonarr/Radarr, Overseerr/Jellyseerr, qBittorrent/Transmission, Jellyfin/Plex, Proxmox, Glances (system resources), Uptime Kuma, or any JSON API
 - Optional self-signed TLS support for homelab boxes (Proxmox, NPM, …)
 - Instant client-side filter (press `/`), an optional **web-search box**, and current **weather** (temperature + condition icon) in the header
 - **Named tabs**, **collapsible** groups, and **drag-to-reorder** for both groups *and* the services inside them, plus one-click **theme presets** (Dracula, Catppuccin, Gruvbox, Everforest, Kanagawa, …), dark / light / auto modes, custom **background image**, and configurable columns
@@ -119,6 +119,7 @@ groups:
 | `widget_cache_ttl` | top-level | Seconds the server caches widget API data (default `30`, `0` disables) |
 | `config_editor` | top-level | Allow editing `config.yaml` / `RSS.yaml` from the browser (default `true`; set `false` to disable) — see [Editing config in the browser](#editing-config-in-the-browser) |
 | `status_glyphs` | top-level | Default for the colourblind-safe ✓/✕/? status glyphs (default `false`; also toggleable per browser) — see [Colourblind glyphs](#colourblind-glyphs) |
+| `sparklines` | top-level | Draw a small latency sparkline next to each checked service's status dot (default `false`) — bars scale to the busiest recent check, and outages show full-height in the down colour |
 | RSS feeds | `config/RSS.yaml` | Feeds shown in the side pane live in their own file — see [RSS feeds](#rss-feeds) |
 | `icon_format` | top-level | dashboard-icons asset type: `svg` (default), `png`, or `webp` |
 | `background` | top-level | Optional background image — a URL or a filename dropped in `config/` (see [Background image](#background-image)) |
@@ -355,11 +356,13 @@ docker compose up -d
 | `npm` | Proxy hosts, Enabled, Disabled | `username` + `password` (Nginx Proxy Manager login) |
 | `portainer` | Running, Stopped (containers) | `key` (Portainer API access token) |
 | `sonarr` / `radarr` | Series/Movies, Queue, Upcoming (7 days) | `key` (API key) |
+| `overseerr` (`jellyseerr`) | Pending, Processing, Available (requests) | `key` (API key) |
 | `qbittorrent` | Active, Torrents, ↓/↑ speed | `username` + `password` |
 | `transmission` | Active, Torrents, ↓/↑ speed | optional `username` + `password` |
 | `jellyfin` (`emby`) | Streams, Sessions | `key` (API key) |
 | `plex` | Streams | `token` (X-Plex-Token) |
 | `proxmox` (`pve`) | CPU %, RAM %, running VMs | `tokenid` + `secret` (API token) |
+| `glances` | CPU %, RAM %, Disk %, Load | optional `password` (Glances `--password`); `mount`/`api` optional |
 | `uptime-kuma` | Up, Down, Monitors | `key` (API key — basic-auth password on `/metrics`) |
 | `json` | Whatever you map | optional `headers` |
 

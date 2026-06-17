@@ -29,6 +29,7 @@ const DEFAULTS = Object.freeze({
   rss_cache_ttl: 300,   // seconds the server caches each fetched feed
   config_editor: true,  // allow editing config.yaml / RSS.yaml from the browser
   status_glyphs: false, // default for the colourblind-safe ✓/✕/? status glyphs
+  sparklines: false,    // draw a small latency sparkline next to each status dot
 });
 
 // Strip server-only secrets (widget API keys/passwords) before sending config
@@ -262,7 +263,7 @@ function recordHistory(results) {
   for (const [key, r] of Object.entries(results)) {
     if (!r || r.status === 'unknown') continue;
     const arr = statusHistory.get(key) || [];
-    arr.push({ t: now, up: r.status === 'up' });
+    arr.push({ t: now, up: r.status === 'up', ms: typeof r.latency === 'number' ? r.latency : null });
     while (arr.length && arr[0].t < cutoff) arr.shift();
     if (arr.length > 5000) arr.splice(0, arr.length - 5000); // safety cap
     statusHistory.set(key, arr);
@@ -276,12 +277,24 @@ function uptime24(key) {
   return Math.round((up / arr.length) * 1000) / 10; // one decimal place
 }
 
+// The most recent samples, compacted for the optional inline latency sparkline.
+const SPARK_SAMPLES = 20;
+function sparkline(key) {
+  const arr = statusHistory.get(key);
+  if (!arr || !arr.length) return null;
+  return arr.slice(-SPARK_SAMPLES).map((s) => ({ ms: s.ms ?? null, up: s.up }));
+}
+
 async function computeStatus() {
   const results = await forEachService((s) => s.check, (s) => checkService(s));
   recordHistory(results);
   for (const [key, r] of Object.entries(results)) {
     const u = uptime24(key);
     if (u != null) r.uptime24 = u;
+    if (config.sparklines) {
+      const s = sparkline(key);
+      if (s) r.spark = s;
+    }
   }
   return results;
 }

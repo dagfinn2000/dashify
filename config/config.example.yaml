@@ -35,6 +35,10 @@ config_editor: true
 # toggle this from the palette panel; this is just the starting value.
 status_glyphs: false
 
+# Draw a small latency sparkline next to each checked service's status dot. Bars
+# scale to the busiest recent check; outages show full-height in the down colour.
+sparklines: false
+
 # ── Header extras ────────────────────────────────────────────────────────────
 
 # Web-search box in the header:
@@ -232,6 +236,22 @@ groups:
         widget:
           type: uptime-kuma
           key: "${KUMA_API_KEY}"        # basic-auth password on the /metrics endpoint
+
+      - name: "System (Glances)"
+        url: "http://192.168.1.5:61208"
+        check: true
+        widget:
+          type: glances         # CPU / RAM / Disk / Load from a Glances agent
+          # password: "${GLANCES_PASSWORD}"   # only if Glances runs with --password
+          # mount: "/"          # which filesystem to report (default "/")
+          # api: 4              # API version — omit to auto-detect (tries v4 then v3)
+
+      - name: "Overseerr"
+        url: "http://192.168.1.100:5055"
+        check: true
+        widget:
+          type: overseerr       # also: jellyseerr (same API)
+          key: "${OVERSEERR_API_KEY}"
 
       # The generic provider: point it at any JSON API and map fields by dot-path.
       # format: number (thousands separators) | percent (one decimal + %).
