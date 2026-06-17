@@ -69,17 +69,20 @@ test('GET / serves the frontend shell', async () => {
   assert.match(html, /Dashify/);
 });
 
-test('GET /user serves assets from the config directory', async () => {
-  // config.yaml lives in the config dir, so it should be reachable under /user
-  const r = await fetch(`${BASE}/user/config.yaml`);
-  assert.equal(r.status, 200);
+test('GET /user does not expose the raw config files', async () => {
+  // config.yaml / RSS.yaml may hold inline secrets, so /user must not serve them
+  // even though they live in the config directory (assets like images still are).
+  for (const file of ['config.yaml', 'RSS.yaml']) {
+    const r = await fetch(`${BASE}/user/${file}`);
+    assert.equal(r.status, 404, `${file} must not be reachable under /user`);
+  }
 });
 
 test('GET /api/config never leaks widget secrets', async () => {
   const r = await fetch(`${BASE}/api/config`);
   const text = await r.text();
-  // The default config ships a placeholder Pi-hole key; it must not be exposed.
-  assert.ok(!text.includes('YOUR_PIHOLE_APP_PASSWORD_OR_API_TOKEN'), 'key leaked to client');
+  // Widget blocks (which carry keys/passwords) are stripped before the config
+  // reaches the browser; only a has_widget flag remains.
   assert.ok(!/"widget"\s*:/.test(text), 'widget block leaked to client');
 });
 

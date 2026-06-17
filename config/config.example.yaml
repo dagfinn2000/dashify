@@ -1,0 +1,251 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Dashify — annotated example configuration
+#
+# This file is a REFERENCE: it shows every supported option with example values
+# and explains what each one does. The app actually reads `config/config.yaml`,
+# so to use any of this, copy the bits you want into that file (or replace it:
+#   cp config/config.example.yaml config/config.yaml).
+#
+# Edits to config.yaml apply live — just save and refresh the browser; no restart.
+# A YAML typo shows a clear error banner instead of taking the dashboard down.
+#
+# Secrets (widget API keys/passwords) should NOT be hard-coded here. Reference an
+# environment variable as ${VAR} (loaded from a .env file — see .env.example) so
+# nothing sensitive lands in the file. Quote the reference: key: "${VAR}".
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── General ──────────────────────────────────────────────────────────────────
+title: "My Dashboard"          # shown in the header and the browser tab
+subtitle: "Home Lab"           # optional small text under the title (omit to hide)
+theme: dark                    # dark | light | auto  (auto follows the OS/browser)
+columns: 3                     # number of group columns, 1–4
+refresh_interval: 30           # seconds between status re-checks (0 = no auto-refresh)
+timeout: 5                     # default health-check timeout in seconds
+status_cache_ttl: 5            # seconds the server caches /api/status so open tabs
+                               #   share one sweep instead of each hammering services
+widget_cache_ttl: 30           # seconds the server caches widget API data (0 = off)
+icon_format: svg               # dashboard-icons asset type: svg | png | webp
+
+# Let people edit config.yaml / RSS.yaml from the browser (gear icon → Settings).
+# Set false to disable. The raw file is shown to anyone who can reach the
+# dashboard when this is on, so keep secrets in .env as ${VAR} rather than inline.
+config_editor: true
+
+# Default for the colourblind-safe ✓/✕/? status glyphs. Each browser can also
+# toggle this from the palette panel; this is just the starting value.
+status_glyphs: false
+
+# ── Header extras ────────────────────────────────────────────────────────────
+
+# Web-search box in the header:
+#   true                       Google (default)
+#   false                      hide the box
+#   "https://duckduckgo.com/?q=%s"   any URL template — %s is the query
+search: true
+
+# Current temperature + condition icon in the header (Open-Meteo, no API key).
+# Omit the whole block — or set enabled: false — to turn it off.
+# weather:
+#   enabled: true
+#   latitude: 59.91            # your coordinates
+#   longitude: 10.75
+#   units: celsius             # celsius | fahrenheit
+
+# ── Appearance ───────────────────────────────────────────────────────────────
+
+# Dashboard-wide background image. Use a URL, or drop a file into this config/
+# folder and reference it by filename (it's served from /user/<file>).
+# background: "background.jpg"
+# background_dim: 0.5          # 0–1 scrim over the image so text stays readable
+# background_blur: 0           # px of blur applied to the background
+
+# Card translucency (looks great over a background image) and frosted blur.
+# card_opacity: 1              # 0 (fully transparent) … 1 (solid, default)
+# card_blur: 0                 # px backdrop blur behind translucent cards
+
+# Override theme colours. Provide a flat map (applies to both themes) or separate
+# dark:/light: maps. Overridable keys: bg, bg-card, bg-card-hover, border, text,
+# text-muted, text-dim, accent, up, down, unknown, header-bg.
+# Tip: pick a preset and fine-tune in the palette panel, then "Copy YAML" here.
+# colors:
+#   accent: "#f59e0b"
+#   dark:
+#     bg: "#0b0e14"
+#     bg-card: "#111827"
+#   light:
+#     bg: "#eef2f7"
+
+# Tab for groups that don't set their own `tab:` (only matters once tabs are used).
+# default_tab: "Main"
+
+# ── Groups & services ────────────────────────────────────────────────────────
+# Each group is a card. Each service is a quick link with an optional live status
+# dot and/or a widget. Icons resolve automatically from the service name via
+# https://github.com/homarr-labs/dashboard-icons — only set `icon:` to override.
+groups:
+  - name: "Media"
+    # icon: "🎬"               # optional group icon (slug, emoji, URL, or /user file)
+    # width: 2                 # span 2 columns (1–4); also draggable in the UI
+    # tab: "Home"              # place this group under a named tab
+    services:
+      - name: "Jellyfin"       # icon auto-resolves to "jellyfin"
+        url: "http://192.168.1.100:8096"
+        description: "Media server"     # optional subtitle line
+        check: true                     # live HTTP health check (status dot)
+        check_path: "/health"           # optional path appended to url for the check
+
+      - name: "Plex"
+        url: "http://192.168.1.100:32400"
+        description: "Media server"
+        check: true
+
+  - name: "Infrastructure"
+    services:
+      - name: "Proxmox"
+        url: "https://192.168.1.10:8006"
+        description: "Hypervisor"
+        check: true
+        allow_insecure: true   # accept a self-signed / invalid TLS certificate
+        # icon: proxmox        # force a specific dashboard-icons slug
+        # timeout: 10          # per-service health-check timeout (seconds)
+        # method: HEAD         # HTTP method for the check (default GET)
+        # expect_status: 200   # require an exact status code instead of "< 400"
+
+      # Non-HTTP services use a bare TCP connect (SSH, databases, game servers…).
+      # Give host:port in `url`, or set `host:` and `port:` explicitly.
+      - name: "NAS (SSH)"
+        url: "192.168.1.20:22"
+        description: "Storage"
+        check: tcp
+        # host: 192.168.1.20
+        # port: 22
+
+  # ── Icon override styles (all four are valid for `icon:`) ───────────────────
+  - name: "Icons"
+    services:
+      - name: "By slug"
+        url: "http://example.com"
+        icon: pi-hole          # a dashboard-icons slug (aliases like "pihole" work)
+      - name: "By emoji"
+        url: "http://example.com"
+        icon: "🚀"
+      - name: "By URL"
+        url: "http://example.com"
+        icon: "https://example.com/logo.png"
+      - name: "Local file"
+        url: "http://example.com"
+        icon: my-logo.png       # a file dropped in this config/ folder (/user/my-logo.png)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Service widgets — live stats pulled from a service's own API onto its card.
+# Fetched server-side; keys/passwords stay on the server and never reach the
+# browser. A widget inherits the service's `url`, `allow_insecure`, and `timeout`
+# unless you override them inside the widget block.
+#
+# The group below is simply one more entry in the `groups:` list above — it shows
+# one service per provider. Each key/password uses ${VAR} so the secret comes from
+# .env (see .env.example) — never inline. Delete the providers you don't use.
+# ─────────────────────────────────────────────────────────────────────────────
+  - name: "Widgets reference"
+    services:
+      - name: "Pi-hole"
+        url: "http://192.168.1.1/admin"
+        check: true
+        widget:
+          type: pihole          # also: pi-hole. Works with v6 (REST) and v5 (api.php).
+          url: "http://192.168.1.1"     # base URL, WITHOUT /admin
+          key: "${PIHOLE_PASSWORD}"     # v6 app password, or v5 API token
+
+      - name: "AdGuard Home"
+        url: "http://192.168.1.2"
+        check: true
+        widget:
+          type: adguard         # also: adguard-home
+          username: "admin"
+          password: "${ADGUARD_PASSWORD}"
+
+      - name: "Nginx Proxy Manager"
+        url: "http://192.168.1.100:81"
+        check: true
+        widget:
+          type: npm             # also: nginx-proxy-manager
+          username: "admin@example.com"
+          password: "${NPM_PASSWORD}"
+
+      - name: "Portainer"
+        url: "http://192.168.1.100:9000"
+        check: true
+        widget:
+          type: portainer
+          key: "${PORTAINER_TOKEN}"     # Portainer API access token
+
+      - name: "Sonarr"
+        url: "http://192.168.1.100:8989"
+        check: true
+        widget:
+          type: sonarr          # radarr is identical (type: radarr)
+          key: "${SONARR_API_KEY}"
+
+      - name: "qBittorrent"
+        url: "http://192.168.1.100:8080"
+        check: true
+        widget:
+          type: qbittorrent     # also: qbit
+          username: "admin"
+          password: "${QBIT_PASSWORD}"
+
+      - name: "Transmission"
+        url: "http://192.168.1.100:9091"
+        check: true
+        widget:
+          type: transmission    # username/password optional
+          username: "admin"
+          password: "${TRANSMISSION_PASSWORD}"
+
+      - name: "Jellyfin (widget)"
+        url: "http://192.168.1.100:8096"
+        check: true
+        widget:
+          type: jellyfin        # also: emby
+          key: "${JELLYFIN_API_KEY}"
+
+      - name: "Plex (widget)"
+        url: "http://192.168.1.100:32400"
+        check: true
+        widget:
+          type: plex
+          token: "${PLEX_TOKEN}"        # X-Plex-Token
+
+      - name: "Proxmox (widget)"
+        url: "https://192.168.1.10:8006"
+        check: true
+        allow_insecure: true
+        widget:
+          type: proxmox         # also: pve
+          tokenid: "root@pam!dashify"   # API token id …
+          secret: "${PROXMOX_SECRET}"   # … and its secret
+          # token: "root@pam!dashify=${PROXMOX_SECRET}"   # or a prebuilt token string
+
+      - name: "Uptime Kuma"
+        url: "http://192.168.1.100:3001"
+        check: true
+        widget:
+          type: uptime-kuma
+          key: "${KUMA_API_KEY}"        # basic-auth password on the /metrics endpoint
+
+      # The generic provider: point it at any JSON API and map fields by dot-path.
+      # format: number (thousands separators) | percent (one decimal + %).
+      # path supports array indices, e.g. system.load.0
+      - name: "Anything (JSON API)"
+        url: "http://192.168.1.100:8080"
+        check: true
+        widget:
+          type: json
+          url: "http://192.168.1.100:8080/api/stats"
+          # method: GET
+          # body: '{"query":"x"}'
+          headers:
+            Authorization: "Bearer ${SOME_TOKEN}"
+          mappings:
+            - { label: "Users", path: "data.active_users", format: "number" }
+            - { label: "Load",  path: "system.load.0",     suffix: "%" }

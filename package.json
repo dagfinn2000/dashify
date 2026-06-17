@@ -8,7 +8,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
-    "lint": "node --check src/server.js && node --check src/widgets.js && node --check src/public/app.js"
+    "lint": "node --check src/server.js && node --check src/widgets.js && node --check src/rss.js && node --check src/public/app.js"
   },
   "engines": {
     "node": ">=18"

@@ -1,6 +1,6 @@
 import express from 'express';
 import { readFileSync, writeFileSync, watchFile, accessSync, constants } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { join, dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import http from 'node:http';
 import https from 'node:https';
@@ -332,6 +332,22 @@ app.use(express.static(join(__dirname, 'public')));
 
 // Serve the user's config directory so they can drop in their own assets
 // (e.g. a background image or custom icons) and reference them as /user/<file>.
+// The YAML config files themselves are NOT exposed here — they may hold inline
+// secrets, and /api/config already serves a secret-stripped view. (Editing them
+// goes through /api/config/raw, which is gated by `config_editor`.)
+const protectedAssets = new Set(
+  [CONFIG_PATH, rssConfigPath(CONFIG_PATH)].map((p) => basename(p).toLowerCase()),
+);
+app.use('/user', (req, res, next) => {
+  let name = req.path.replace(/^\/+/, '');
+  try {
+    name = decodeURIComponent(name);
+  } catch {
+    /* malformed encoding — fall through with the raw value */
+  }
+  if (protectedAssets.has(name.toLowerCase())) return res.status(404).end();
+  next();
+});
 app.use('/user', express.static(dirname(CONFIG_PATH), { index: false, dotfiles: 'ignore' }));
 
 app.get('/healthz', (_req, res) => {
