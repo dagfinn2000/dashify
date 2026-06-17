@@ -30,12 +30,15 @@
   const RSS_PANE_KEY = 'dashify-rss-pane';
   const COLLAPSED_KEY = 'dashify-collapsed';
   const ORDER_KEY = 'dashify-group-order';
+  const SERVICE_ORDER_KEY = 'dashify-service-order';
+  const ACTIVE_TAB_KEY = 'dashify-active-tab';
   let config = null;
   let statusMap = {};
   let widgetMap = {};
   let feeds = [];
   let refreshTimer = null;
   let clockTimer = null;
+  let activeTab = null;
   // localStorage wrapper that never throws (private mode / storage disabled).
   const store = {
     get: (key) => {
@@ -68,6 +71,7 @@
   // ── Boot ────────────────────────────────────────────
   async function init() {
     await loadConfig();
+    activeTab = store.get(ACTIVE_TAB_KEY);
     applyTheme();
     applyBackground();
     applyAppearance();
@@ -159,6 +163,28 @@
 
     const cols = Math.min(4, Math.max(1, config.columns || 3));
     $('groups-container').style.setProperty('--cols', cols);
+
+    showConfigError(config.config_error);
+  }
+
+  // Show a dismissible banner when the server couldn't parse config.yaml /
+  // RSS.yaml, instead of silently rendering an empty default dashboard.
+  function showConfigError(msg) {
+    const el = $('config-error');
+    if (!el) return;
+    if (!msg) {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
+    }
+    el.innerHTML =
+      '<span class="config-error-text"></span>' +
+      '<button class="config-error-close" type="button" aria-label="Dismiss">✕</button>';
+    el.querySelector('.config-error-text').textContent = '⚠ ' + msg;
+    el.querySelector('.config-error-close').addEventListener('click', () => {
+      el.hidden = true;
+    });
+    el.hidden = false;
   }
 
   // ── Theme ────────────────────────────────────────────
@@ -580,12 +606,82 @@
     return iconImg(src, pngFallback, name);
   }
 
+  // ── Tabs (group sections, remembered per browser) ────
+  // A group's tab is its `tab:`, or the top-level `default_tab` (or "Main").
+  const groupTab = (g) => String(g?.tab ?? config?.default_tab ?? 'Main');
+
+  // Tabs only appear once at least one group opts in with a `tab:` — so an
+  // existing tab-less config renders exactly as before.
+  const usesTabs = () => (config?.groups || []).some((g) => g.tab != null && g.tab !== '');
+
+  function tabList() {
+    const seen = [];
+    for (const g of config?.groups || []) {
+      const t = groupTab(g);
+      if (!seen.includes(t)) seen.push(t);
+    }
+    return seen;
+  }
+
+  function renderTabs() {
+    const bar = $('tab-bar');
+    if (!bar) return;
+    if (!usesTabs()) {
+      bar.hidden = true;
+      bar.innerHTML = '';
+      return;
+    }
+    const tabs = tabList();
+    if (!tabs.includes(activeTab)) activeTab = tabs[0];
+    bar.innerHTML = '';
+    tabs.forEach((t) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tab' + (t === activeTab ? ' active' : '');
+      btn.dataset.tab = t;
+      btn.textContent = t;
+      btn.addEventListener('click', () => switchTab(t));
+      bar.appendChild(btn);
+    });
+    bar.hidden = false;
+  }
+
+  function switchTab(t) {
+    activeTab = t;
+    store.set(ACTIVE_TAB_KEY, t);
+    $('tab-bar')
+      .querySelectorAll('.tab')
+      .forEach((b) => b.classList.toggle('active', b.dataset.tab === t));
+    applyFilter();
+  }
+
+  // ── Service order (drag-to-reorder within a group) ───
+  let serviceOrders = store.getJSON(SERVICE_ORDER_KEY, {});
+
+  // Saved order first (in its stored sequence), then any new services in config order.
+  function orderedServices(group) {
+    const order = serviceOrders[group.name];
+    const svcs = group.services || [];
+    if (!Array.isArray(order) || !order.length) return svcs;
+    const rank = (s) => {
+      const i = order.indexOf(s.name);
+      return i === -1 ? Infinity : i;
+    };
+    return [...svcs].sort((a, b) => rank(a) - rank(b));
+  }
+
+  function saveServiceOrder(groupName, listEl) {
+    serviceOrders[groupName] = [...listEl.querySelectorAll('.service')].map((s) => s.dataset.svcName);
+    store.setJSON(SERVICE_ORDER_KEY, serviceOrders);
+  }
+
   // ── Render groups ────────────────────────────────────
   function renderGroups() {
     const container = $('groups-container');
     container.innerHTML = '';
 
     const groups = orderedGroups(config?.groups || []);
+    renderTabs();
     if (!groups.length) {
       container.innerHTML =
         '<div class="empty-state">No services configured yet.<br>' +
@@ -598,6 +694,7 @@
       const card = document.createElement('div');
       card.className = 'group' + (collapsed.has(group.name) ? ' collapsed' : '');
       card.dataset.group = group.name;
+      card.dataset.tab = groupTab(group);
       card.style.setProperty('--span', spanFor(group));
       card.innerHTML = `
         <div class="group-header">
@@ -627,10 +724,13 @@
       enableGroupDrag(card);
 
       const list = card.querySelector('.service-list');
-      (group.services || []).forEach((svc) => {
+      wireServiceReorder(list);
+      orderedServices(group).forEach((svc) => {
         list.appendChild(buildServiceEl(group, svc));
       });
     });
+
+    applyFilter(); // apply the active tab (and any live filter text)
   }
 
   function buildServiceEl(group, svc) {
@@ -639,6 +739,7 @@
     a.href = svc.url || '#';
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
+    a.draggable = false; // the grip drives reordering, not the whole link
     a.dataset.svcName = svc.name || '';
     a.dataset.desc = svc.description || '';
     a.dataset.key = `${group.name}::${svc.name}`;
@@ -649,6 +750,7 @@
       : '';
 
     a.innerHTML = `
+      <span class="service-drag" title="Drag to reorder" aria-hidden="true" draggable="true">⠿</span>
       <span class="service-info">
         <span class="service-name">${esc(svc.name)}</span>
         ${svc.description ? `<span class="service-desc">${esc(svc.description)}</span>` : ''}
@@ -660,8 +762,9 @@
     const wrap = document.createElement('span');
     wrap.className = 'service-icon';
     wrap.appendChild(buildIcon(svc.icon, svc.name, true));
-    a.insertBefore(wrap, a.firstChild);
+    a.insertBefore(wrap, a.querySelector('.service-info'));
 
+    enableServiceDrag(a, group);
     return a;
   }
 
@@ -989,10 +1092,12 @@
   }
 
   // Closest non-dragged card to the pointer, with a guess at before/after.
+  // Hidden cards (other tabs / filtered out) have a zero-size rect — skip them.
   function nearestGroup(x, y) {
     let best = null;
     document.querySelectorAll('#groups-container .group:not(.dragging)').forEach((el) => {
       const r = el.getBoundingClientRect();
+      if (!r.width && !r.height) return;
       const cx = r.left + r.width / 2;
       const cy = r.top + r.height / 2;
       const dist = Math.hypot(x - cx, y - cy);
@@ -1001,6 +1106,53 @@
       }
     });
     return best;
+  }
+
+  // ── Services: drag-to-reorder within a group ─────────
+  let draggingSvc = null;
+
+  function enableServiceDrag(a, group) {
+    const handle = a.querySelector('.service-drag');
+    if (!handle) return;
+    // The grip lives inside the link — don't navigate when it's clicked.
+    handle.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    handle.addEventListener('dragstart', (e) => {
+      e.stopPropagation(); // don't also start a group drag
+      draggingSvc = a;
+      a.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', a.dataset.svcName || '');
+    });
+    handle.addEventListener('dragend', () => {
+      const list = a.closest('.service-list');
+      a.classList.remove('dragging');
+      draggingSvc = null;
+      if (list) saveServiceOrder(group.name, list);
+    });
+  }
+
+  function wireServiceReorder(list) {
+    list.addEventListener('dragover', (e) => {
+      if (!draggingSvc || draggingSvc.closest('.service-list') !== list) return;
+      e.preventDefault();
+      e.stopPropagation(); // keep the group container from also reordering
+      const after = nearestService(list, e.clientY);
+      if (!after) list.appendChild(draggingSvc);
+      else list.insertBefore(draggingSvc, after);
+    });
+  }
+
+  // First service whose vertical midpoint is below the pointer (insert before it).
+  function nearestService(list, y) {
+    const items = [...list.querySelectorAll('.service:not(.dragging)')];
+    for (const el of items) {
+      const r = el.getBoundingClientRect();
+      if (y < r.top + r.height / 2) return el;
+    }
+    return null;
   }
 
   // ── Header extras: web search + weather ──────────────
@@ -1019,22 +1171,51 @@
     input.value = '';
   }
 
+  // Small condition icons keyed off the WMO weather code Open-Meteo returns.
+  const WEATHER_ICONS = {
+    sun: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    cloudSun: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 6V4M4 9H2M5.1 5.1 3.7 3.7M10.5 7.5A3.5 3.5 0 0 0 4 9"/><path d="M16.5 19a4 4 0 0 0 .2-8 5 5 0 0 0-9.3-1.2A3.6 3.6 0 0 0 7 19z"/></svg>',
+    cloud: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 6.5 19z"/></svg>',
+    rain: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 13a4 4 0 0 0 0-8 5.5 5.5 0 0 0-10.6 1.4A3.5 3.5 0 0 0 6 13z"/><path d="M8 17v2M12 17v2M16 17v2"/></svg>',
+    snow: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 13a4 4 0 0 0 0-8 5.5 5.5 0 0 0-10.6 1.4A3.5 3.5 0 0 0 6 13z"/><path d="M8 18h.01M12 18h.01M16 18h.01M10 21h.01M14 21h.01"/></svg>',
+    thunder: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 12a4 4 0 0 0 0-8 5.5 5.5 0 0 0-10.6 1.4A3.5 3.5 0 0 0 6 12z"/><path d="M12 14l-2 4h3l-2 4"/></svg>',
+  };
+
+  function weatherIcon(code) {
+    const c = Number(code);
+    if (!Number.isFinite(c)) return '';
+    let key = 'cloud';
+    if (c === 0) key = 'sun';
+    else if (c === 1 || c === 2) key = 'cloudSun';
+    else if (c === 3 || c === 45 || c === 48) key = 'cloud';
+    else if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82)) key = 'rain';
+    else if ((c >= 71 && c <= 77) || c === 85 || c === 86) key = 'snow';
+    else if (c >= 95) key = 'thunder';
+    return WEATHER_ICONS[key];
+  }
+
   function startWeather() {
     const w = config?.weather;
     const el = $('weather');
-    if (!el || !w || w.latitude == null || w.longitude == null) return;
+    // Off when there's no weather block, weather:false, weather.enabled:false,
+    // or no coordinates — so it's a plain config.yaml toggle.
+    if (!el || !w || w === false || w.enabled === false || w.latitude == null || w.longitude == null) return;
     const unit = /f/i.test(w.units || w.unit || 'celsius') ? 'fahrenheit' : 'celsius';
     const url =
       `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(w.latitude)}` +
-      `&longitude=${encodeURIComponent(w.longitude)}&current=temperature_2m&temperature_unit=${unit}`;
+      `&longitude=${encodeURIComponent(w.longitude)}&current=temperature_2m,weather_code&temperature_unit=${unit}`;
     const fetchWeather = async () => {
       try {
         const data = await (await fetch(url)).json();
         const t = data?.current?.temperature_2m;
-        if (t != null) {
-          el.textContent = `${Math.round(t)}${data?.current_units?.temperature_2m || (unit === 'fahrenheit' ? '°F' : '°C')}`;
-          el.hidden = false;
-        }
+        if (t == null) return;
+        const unitLabel = data?.current_units?.temperature_2m || (unit === 'fahrenheit' ? '°F' : '°C');
+        el.innerHTML = weatherIcon(data?.current?.weather_code);
+        const temp = document.createElement('span');
+        temp.className = 'weather-temp';
+        temp.textContent = `${Math.round(t)}${unitLabel}`;
+        el.appendChild(temp);
+        el.hidden = false;
       } catch {
         /* keep the previous value */
       }
@@ -1046,7 +1227,10 @@
   // ── Filter ───────────────────────────────────────────
   function applyFilter() {
     const q = ($('filter').value || '').trim().toLowerCase();
+    const tabbed = usesTabs();
     document.querySelectorAll('.group').forEach((group) => {
+      // While filtering, search across every tab; otherwise honour the active tab.
+      const inTab = !tabbed || !!q || group.dataset.tab === activeTab;
       let visible = 0;
       group.querySelectorAll('.service').forEach((svc) => {
         const hay = `${svc.dataset.svcName} ${svc.dataset.desc}`.toLowerCase();
@@ -1054,7 +1238,7 @@
         svc.style.display = show ? '' : 'none';
         if (show) visible += 1;
       });
-      group.style.display = visible ? '' : 'none';
+      group.style.display = inTab && visible ? '' : 'none';
     });
   }
 

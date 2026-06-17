@@ -7,10 +7,10 @@ A lightweight, self-hosted **status page and service dashboard** configured enti
 - Live HTTP **and TCP** health checks with status dots, response-time tooltips, **24h uptime %**, and an at-a-glance "up" summary
 - **Service widgets** — live stats on the card for Pi-hole, AdGuard, NPM, Portainer, Sonarr/Radarr, qBittorrent/Transmission, Jellyfin/Plex, Proxmox, Uptime Kuma, or any JSON API
 - Optional self-signed TLS support for homelab boxes (Proxmox, NPM, …)
-- Instant client-side filter (press `/`), an optional **web-search box**, and current **temperature** in the header
-- **Collapsible, drag-to-reorder** groups, plus dark / light / auto themes, custom **background image**, and configurable columns
+- Instant client-side filter (press `/`), an optional **web-search box**, and current **weather** (temperature + condition icon) in the header
+- **Named tabs**, **collapsible** groups, and **drag-to-reorder** for both groups *and* the services inside them, plus dark / light / auto themes, custom **background image**, and configurable columns
 - **RSS / Atom feed pane** beside your cards — add and remove feeds right from the dashboard
-- Edit `config/config.yaml` and changes apply **live** — no restart
+- Edit `config/config.yaml` and changes apply **live** — no restart, and a YAML typo shows a clear error banner instead of a blank page
 - Runs in Docker (non-root, with a healthcheck) or an LXC, exposed on port **6969**
 
 ---
@@ -105,8 +105,9 @@ groups:
 | `theme` | top-level | `dark`, `light`, or `auto` (follow the browser/OS preference). A toggle in the header overrides this per-browser. |
 | `refresh_interval` | top-level | Seconds between status re-checks (`0` disables auto-refresh) |
 | `columns` | top-level | Number of group columns, `1`–`4` |
+| `default_tab` | top-level | Tab name for groups that don't set their own `tab` (default `Main`); only matters once tabs are in use |
 | `search` | top-level | Web-search box in the header: `true` (Google, default), `false`, or a URL template with `%s` |
-| `weather` | top-level | Show the current temperature in the header (Open-Meteo, no API key): `{ latitude, longitude, units }` |
+| `weather` | top-level | Current temperature + condition icon in the header (Open-Meteo, no API key): `{ enabled, latitude, longitude, units }`. Omit the block — or set `enabled: false` — to turn it off |
 | `timeout` | top-level | Default health-check timeout in seconds (per-service `timeout` overrides it) |
 | `status_cache_ttl` | top-level | Seconds the server caches `/api/status` so multiple open tabs share one sweep (`0` disables) |
 | `widget_cache_ttl` | top-level | Seconds the server caches widget API data (default `30`, `0` disables) |
@@ -120,6 +121,7 @@ groups:
 | `colors` | top-level | Override theme colours — see [Colours & translucency](#colours--translucency) |
 | `name` / `icon` | group | Group card heading and optional icon |
 | `width` | group | Columns the card spans (`1`–`4`); also draggable in the UI (see [Resizing cards](#resizing-cards)) |
+| `tab` | group | Place the group under a named tab; a tab bar appears once any group sets one (see [Tabs](#tabs)) |
 | `name` / `url` | service | Link label and destination |
 | `icon` | service | Optional icon override (see [Icons](#icons)) — defaults to one resolved from the name |
 | `description` | service | Optional subtitle line |
@@ -133,7 +135,7 @@ groups:
 
 The status dot turns **green** when the service responds (HTTP < 400, or matches `expect_status`), **red** when it's unreachable or times out, and **gray** when `check` is off. Hover a dot to see the response time.
 
-**Tips:** press `/` to jump to the filter box, use the header toggle to switch theme, and a live clock sits next to the title — click it (or the `24h`/`12h` button) to switch between 24-hour and AM/PM. **Click a group's header to collapse it, and drag the grip (⠿) in the header to reorder groups.** All of these are remembered in the browser.
+**Tips:** press `/` to jump to the filter box, use the header toggle to switch theme, and a live clock sits next to the title — click it (or the `24h`/`12h` button) to switch between 24-hour and AM/PM. **Click a group's header to collapse it, drag the grip (⠿) in a group header to reorder groups, and drag the grip on a service row (hover to reveal it) to reorder services within a group.** All of these are remembered in the browser. A filter search reaches across every tab.
 
 ### Icons
 
@@ -209,6 +211,27 @@ groups:
     width: 2     # span two columns
     services: [ ... ]
 ```
+
+### Tabs
+
+Split a busy dashboard into **named tabs**. Give any group a `tab:` and a tab bar
+appears across the top; click a tab to show just its groups. Groups without a
+`tab:` fall under `default_tab` (default `Main`). With no `tab:` anywhere, there's
+no tab bar — the dashboard looks exactly as before.
+
+```yaml
+default_tab: "Home"     # optional — the tab for groups that don't set one
+groups:
+  - name: "Media"
+    tab: "Home"
+    services: [ ... ]
+  - name: "Firewall"
+    tab: "Network"
+    services: [ ... ]
+```
+
+The active tab is remembered per browser, and the header filter searches across
+**all** tabs so nothing hides from a search.
 
 ---
 

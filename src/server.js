@@ -85,20 +85,36 @@ function loadRss(path) {
     if (parsed.cache_ttl != null) out.rss_cache_ttl = parsed.cache_ttl;
     return out;
   } catch (e) {
-    if (e.code !== 'ENOENT') console.error('Failed to load RSS.yaml:', e.message);
-    return {}; // absent file is fine — feeds can still be added in the browser
+    if (e.code === 'ENOENT') return {}; // absent file is fine — feeds can be added in the browser
+    console.error('Failed to load RSS.yaml:', e.message);
+    return { rss_error: `RSS.yaml: ${e.message}` };
   }
 }
 
 export function loadConfig(path = CONFIG_PATH) {
   const rss = loadRss(rssConfigPath(path));
+  // Collect parse errors so the UI can show them instead of silently
+  // falling back to defaults (which just looks like the dashboard vanished).
+  const errors = [];
+  if (rss.rss_error) {
+    errors.push(rss.rss_error);
+    delete rss.rss_error;
+  }
+
+  let result;
   try {
     const parsed = yaml.load(readFileSync(path, 'utf8')) || {};
-    return { ...DEFAULTS, ...interpolateEnv(parsed), ...rss };
+    result = { ...DEFAULTS, ...interpolateEnv(parsed), ...rss };
   } catch (e) {
     console.error('Failed to load config:', e.message);
-    return { ...DEFAULTS, ...rss };
+    // A missing config.yaml is expected (the image ships a default); only a
+    // genuine parse error is worth surfacing.
+    if (e.code !== 'ENOENT') errors.unshift(`config.yaml: ${e.message}`);
+    result = { ...DEFAULTS, ...rss };
   }
+
+  result.config_error = errors.length ? errors.join(' · ') : null;
+  return result;
 }
 
 let config = loadConfig();

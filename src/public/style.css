@@ -1,6 +1,10 @@
 /* ── Reset & base ────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* The `hidden` attribute must win over class display rules (e.g. the weather
+   chip, tab bar, and config-error banner all default to hidden). */
+[hidden] { display: none !important; }
+
 :root {
   --radius: 10px;
   --gap: 18px;
@@ -126,6 +130,9 @@ header {
 .clock:hover { color: var(--accent); }
 
 .weather {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--text-muted);
@@ -134,6 +141,7 @@ header {
 }
 
 .weather:hover { color: var(--accent); }
+.weather svg { display: block; width: 16px; height: 16px; }
 
 .web-search { display: flex; }
 
@@ -274,13 +282,80 @@ main {
   gap: var(--gap);
 }
 
-#groups-container {
+/* Column holding the optional tab bar above the groups grid */
+.content {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+#groups-container {
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(var(--cols, 3), 1fr);
   gap: var(--gap);
 }
+
+/* ── Tabs ────────────────────────────────────────────── */
+.tab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tab {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
+}
+
+.tab:hover { color: var(--accent); border-color: var(--accent); }
+
+.tab.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-card));
+}
+
+/* ── Config error banner ─────────────────────────────── */
+.config-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: var(--gap);
+  padding: 11px 14px;
+  border: 1px solid var(--down);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--down) 14%, var(--bg-card));
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.config-error-text { flex: 1; min-width: 0; word-break: break-word; }
+
+.config-error-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color var(--transition);
+}
+
+.config-error-close:hover { color: var(--down); }
 
 /* ── Group card ──────────────────────────────────────── */
 .group {
@@ -386,6 +461,7 @@ main {
 .service-list { display: flex; flex-direction: column; }
 
 .service {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -399,6 +475,26 @@ main {
 
 .service:last-child { border-bottom: none; }
 .service:hover { background: var(--bg-card-hover); }
+.service.dragging { opacity: 0.4; }
+
+/* Drag-to-reorder grip — sits in the left gutter, appears on hover */
+.service-drag {
+  position: absolute;
+  left: 1px;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  cursor: grab;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.service:hover .service-drag { opacity: 0.6; }
+.service-drag:active { cursor: grabbing; }
 
 .service-icon {
   width: 28px;

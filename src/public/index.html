@@ -71,6 +71,7 @@
   </header>
 
   <main>
+    <div id="config-error" class="config-error" role="alert" hidden></div>
     <div class="layout">
       <aside id="rss-pane" class="rss-pane" aria-label="RSS feeds">
         <div class="rss-pane-head">
@@ -83,7 +84,10 @@
         </form>
         <div id="rss-list" class="rss-list"></div>
       </aside>
-      <div id="groups-container"></div>
+      <div class="content">
+        <nav id="tab-bar" class="tab-bar" aria-label="Dashboard tabs" hidden></nav>
+        <div id="groups-container"></div>
+      </div>
     </div>
   </main>
 

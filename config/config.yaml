@@ -13,8 +13,9 @@ status_cache_ttl: 5        # seconds the server caches results so open tabs shar
 # Header extras
 search: true               # web-search box in the header (true/false, or a URL
                            # template with %s, e.g. "https://duckduckgo.com/?q=%s")
-# weather:                 # show the current temperature in the header (Open-Meteo,
-#   latitude: 59.91        #   no API key needed) — set your coordinates
+# weather:                 # current temperature + condition icon in the header
+#   enabled: true          #   set false (or remove this block) to turn it off
+#   latitude: 59.91        #   your coordinates (Open-Meteo, no API key needed)
 #   longitude: 10.75
 #   units: celsius         # celsius | fahrenheit
 
@@ -53,6 +54,13 @@ icon_format: svg           # svg | png | webp
 # Each group appears as a card column on the dashboard.
 # A group may set `width:` to span multiple columns (1-4); you can also drag the
 # right edge of any card to resize it, and your sizes are remembered per browser.
+#
+# Put a group under a named tab with `tab:` — a tab bar appears as soon as any
+# group sets one. Groups without a `tab:` fall under `default_tab` (below).
+# default_tab: "Main"
+#
+# Tip: hover a service row and drag the grip on its left to reorder services
+# within a group (remembered per browser), just like dragging group cards.
 groups:
   - name: "Media"
     # width: 2               # span two columns
