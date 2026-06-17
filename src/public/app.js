@@ -314,16 +314,28 @@
   // palette maps onto the overridable CSS variables above.
   const PRESET_KEY = 'dashify-preset';
   const PRESETS = [
+    // Built-ins
     { id: 'dark', name: 'Dark', mode: 'dark', base: true, swatch: ['#0f1117', '#6c8ef7', '#4ade80', '#f87171'] },
     { id: 'light', name: 'Light', mode: 'light', base: true, swatch: ['#f1f5f9', '#4f6ef0', '#16a34a', '#dc2626'] },
+
+    // Dark palettes
     { id: 'dracula', name: 'Dracula', mode: 'dark', colors: { bg: '#282a36', 'bg-card': '#343746', 'bg-card-hover': '#424458', border: '#44475a', text: '#f8f8f2', 'text-muted': '#a9adc8', 'text-dim': '#6272a4', accent: '#bd93f9', up: '#50fa7b', down: '#ff5555', unknown: '#6272a4', 'header-bg': '#21222c' } },
     { id: 'catppuccin-mocha', name: 'Catppuccin Mocha', mode: 'dark', colors: { bg: '#1e1e2e', 'bg-card': '#313244', 'bg-card-hover': '#45475a', border: '#313244', text: '#cdd6f4', 'text-muted': '#a6adc8', 'text-dim': '#7f849c', accent: '#cba6f7', up: '#a6e3a1', down: '#f38ba8', unknown: '#6c7086', 'header-bg': '#181825' } },
-    { id: 'catppuccin-latte', name: 'Catppuccin Latte', mode: 'light', colors: { bg: '#eff1f5', 'bg-card': '#ffffff', 'bg-card-hover': '#e6e9ef', border: '#ccd0da', text: '#4c4f69', 'text-muted': '#6c6f85', 'text-dim': '#8c8fa1', accent: '#8839ef', up: '#40a02b', down: '#d20f39', unknown: '#9ca0b0', 'header-bg': '#e6e9ef' } },
     { id: 'nord', name: 'Nord', mode: 'dark', colors: { bg: '#2e3440', 'bg-card': '#3b4252', 'bg-card-hover': '#434c5e', border: '#434c5e', text: '#eceff4', 'text-muted': '#d8dee9', 'text-dim': '#788192', accent: '#88c0d0', up: '#a3be8c', down: '#bf616a', unknown: '#4c566a', 'header-bg': '#2b303b' } },
     { id: 'tokyo-night', name: 'Tokyo Night', mode: 'dark', colors: { bg: '#1a1b26', 'bg-card': '#24283b', 'bg-card-hover': '#2f334d', border: '#2f334d', text: '#c0caf5', 'text-muted': '#9aa5ce', 'text-dim': '#565f89', accent: '#7aa2f7', up: '#9ece6a', down: '#f7768e', unknown: '#565f89', 'header-bg': '#16161e' } },
     { id: 'gruvbox', name: 'Gruvbox', mode: 'dark', colors: { bg: '#282828', 'bg-card': '#3c3836', 'bg-card-hover': '#504945', border: '#504945', text: '#ebdbb2', 'text-muted': '#bdae93', 'text-dim': '#928374', accent: '#fabd2f', up: '#b8bb26', down: '#fb4934', unknown: '#928374', 'header-bg': '#1d2021' } },
+    { id: 'everforest', name: 'Everforest', mode: 'dark', colors: { bg: '#2d353b', 'bg-card': '#343f44', 'bg-card-hover': '#3d484d', border: '#475258', text: '#d3c6aa', 'text-muted': '#9da9a0', 'text-dim': '#859289', accent: '#83c092', up: '#a7c080', down: '#e67e80', unknown: '#859289', 'header-bg': '#272e33' } },
+    { id: 'kanagawa', name: 'Kanagawa', mode: 'dark', colors: { bg: '#1f1f28', 'bg-card': '#2a2a37', 'bg-card-hover': '#363646', border: '#54546d', text: '#dcd7ba', 'text-muted': '#c8c093', 'text-dim': '#727169', accent: '#7e9cd8', up: '#76946a', down: '#c34043', unknown: '#727169', 'header-bg': '#16161d' } },
     { id: 'rose-pine', name: 'Rosé Pine', mode: 'dark', colors: { bg: '#191724', 'bg-card': '#1f1d2e', 'bg-card-hover': '#26233a', border: '#26233a', text: '#e0def4', 'text-muted': '#908caa', 'text-dim': '#6e6a86', accent: '#c4a7e7', up: '#9ccfd8', down: '#eb6f92', unknown: '#6e6a86', 'header-bg': '#1f1d2e' } },
     { id: 'solarized', name: 'Solarized Dark', mode: 'dark', colors: { bg: '#002b36', 'bg-card': '#073642', 'bg-card-hover': '#0a4350', border: '#0a4350', text: '#93a1a1', 'text-muted': '#839496', 'text-dim': '#586e75', accent: '#268bd2', up: '#859900', down: '#dc322f', unknown: '#586e75', 'header-bg': '#002028' } },
+
+    // Light palettes
+    { id: 'catppuccin-latte', name: 'Catppuccin Latte', mode: 'light', colors: { bg: '#eff1f5', 'bg-card': '#ffffff', 'bg-card-hover': '#e6e9ef', border: '#ccd0da', text: '#4c4f69', 'text-muted': '#6c6f85', 'text-dim': '#8c8fa1', accent: '#8839ef', up: '#40a02b', down: '#d20f39', unknown: '#9ca0b0', 'header-bg': '#e6e9ef' } },
+    { id: 'everforest-light', name: 'Everforest Light', mode: 'light', colors: { bg: '#fdf6e3', 'bg-card': '#f4f0d9', 'bg-card-hover': '#efebd4', border: '#e0dcc7', text: '#5c6a72', 'text-muted': '#829181', 'text-dim': '#939f91', accent: '#35a77c', up: '#8da101', down: '#f85552', unknown: '#a6b0a0', 'header-bg': '#f4f0d9' } },
+    { id: 'gruvbox-light', name: 'Gruvbox Light', mode: 'light', colors: { bg: '#f2e5bc', 'bg-card': '#fbf1c7', 'bg-card-hover': '#ebdbb2', border: '#d5c4a1', text: '#3c3836', 'text-muted': '#665c54', 'text-dim': '#7c6f64', accent: '#af3a03', up: '#79740e', down: '#9d0006', unknown: '#a89984', 'header-bg': '#ebdbb2' } },
+    { id: 'solarized-light', name: 'Solarized Light', mode: 'light', colors: { bg: '#fdf6e3', 'bg-card': '#eee8d5', 'bg-card-hover': '#e7e1cd', border: '#d3cbb8', text: '#657b83', 'text-muted': '#839496', 'text-dim': '#93a1a1', accent: '#268bd2', up: '#859900', down: '#dc322f', unknown: '#93a1a1', 'header-bg': '#eee8d5' } },
+    { id: 'rose-pine-dawn', name: 'Rosé Pine Dawn', mode: 'light', colors: { bg: '#faf4ed', 'bg-card': '#fffaf3', 'bg-card-hover': '#f2e9e1', border: '#dfdad9', text: '#575279', 'text-muted': '#797593', 'text-dim': '#9893a5', accent: '#907aa9', up: '#286983', down: '#b4637a', unknown: '#9893a5', 'header-bg': '#fffaf3' } },
+    { id: 'one-light', name: 'One Light', mode: 'light', colors: { bg: '#fafafa', 'bg-card': '#ffffff', 'bg-card-hover': '#f0f0f1', border: '#e5e5e6', text: '#383a42', 'text-muted': '#696c77', 'text-dim': '#a0a1a7', accent: '#4078f2', up: '#50a14f', down: '#e45649', unknown: '#a0a1a7', 'header-bg': '#eaeaeb' } },
   ];
 
   const presetById = (id) => PRESETS.find((p) => p.id === id);

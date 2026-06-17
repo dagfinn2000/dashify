@@ -171,11 +171,18 @@ bind-mounted, so just drop the image in and refresh — no rebuild needed.
 ### Theme presets
 
 Don't want to fiddle with individual colours? Click the **palette icon** in the
-header and pick a ready-made theme — **Dracula**, **Catppuccin** (Mocha & Latte),
-**Nord**, **Tokyo Night**, **Gruvbox**, **Rosé Pine**, **Solarized**, or the
-built-in **Dark** / **Light**. The whole dashboard recolours instantly, and your
-choice is remembered per browser — separately for dark and light, so the header
-toggle can flip between, say, Dracula at night and Catppuccin Latte by day.
+header and pick a ready-made theme. Seventeen are built in, grouped dark then
+light:
+
+- **Dark** — Dracula, Catppuccin Mocha, Nord, Tokyo Night, Gruvbox, Everforest,
+  Kanagawa, Rosé Pine, Solarized Dark
+- **Light** — Catppuccin Latte, Everforest Light, Gruvbox Light, Solarized Light,
+  Rosé Pine Dawn, One Light
+- Plus the built-in **Dark** and **Light**
+
+The whole dashboard recolours instantly, and your choice is remembered per
+browser — separately for dark and light, so the header toggle can flip between,
+say, Dracula at night and Gruvbox Light by day.
 
 Presets are a starting point: tweak any colour on top from the same panel, and
 **Copy YAML** hands you the full palette to paste into `config.yaml` (under
