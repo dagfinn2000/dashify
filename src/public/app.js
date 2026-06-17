@@ -1239,8 +1239,13 @@
 
   // Pointer-based dragging from a grip handle. Replaces HTML5 drag-and-drop so
   // reordering works with touch as well as a mouse. A small movement threshold
-  // distinguishes a drag from a tap, and pointer capture keeps the gesture even
-  // as the dragged element moves out from under the finger/cursor.
+  // distinguishes a drag from a tap.
+  //
+  // The move/up listeners live on `window`, NOT the grip: the first reorder
+  // re-parents the dragged card (and the grip inside it), and the browser
+  // releases pointer capture when a captured element is moved — which would
+  // freeze the drag after one step. Listening on the window sidesteps that, and
+  // `touch-action: none` on the grip (CSS) stops touch drags from scrolling.
   function makePointerDrag(handle, { onStart, onMove, onEnd }) {
     handle.addEventListener('pointerdown', (e) => {
       if (e.button && e.button !== 0) return; // primary button / touch only
@@ -1253,17 +1258,15 @@
           if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
           active = true;
           document.body.classList.add('dragging-active');
-          onStart();
+          onStart(ev.clientX, ev.clientY);
         }
+        ev.preventDefault(); // keep touch from scrolling / selecting mid-drag
         onMove(ev.clientX, ev.clientY);
       };
       const finish = () => {
-        handle.removeEventListener('pointermove', move);
-        handle.removeEventListener('pointerup', finish);
-        handle.removeEventListener('pointercancel', finish);
-        try {
-          handle.releasePointerCapture(e.pointerId);
-        } catch {}
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', finish);
+        window.removeEventListener('pointercancel', finish);
         if (active) {
           document.body.classList.remove('dragging-active');
           onEnd();
@@ -1274,12 +1277,9 @@
         }
       };
 
-      try {
-        handle.setPointerCapture(e.pointerId);
-      } catch {}
-      handle.addEventListener('pointermove', move);
-      handle.addEventListener('pointerup', finish);
-      handle.addEventListener('pointercancel', finish);
+      window.addEventListener('pointermove', move, { passive: false });
+      window.addEventListener('pointerup', finish);
+      window.addEventListener('pointercancel', finish);
       e.preventDefault();
       e.stopPropagation();
     });
@@ -1291,68 +1291,133 @@
     });
   }
 
-  function enableGroupDrag(card) {
-    const handle = card.querySelector('.group-drag');
-    if (!handle) return;
-    const container = () => $('groups-container');
+  // Float the dragged item under the cursor (a "ghost") while a same-size
+  // placeholder marks the drop slot. Keeping the real item OUT of grid flow is
+  // what stops the other cards from being shoved around under the pointer — the
+  // bit that made live reordering feel chaotic. The order is committed on drop.
+  //   item        – the element being dragged
+  //   container   – () => the element the placeholder lives in
+  //   dropBefore  – (x, y) => the sibling to insert the placeholder before (or null = end)
+  //   onCommit    – called after the item is dropped into the placeholder's slot
+  function ghostDrag(handle, { item, container, dropBefore, onCommit }) {
+    let placeholder = null;
+    let savedStyle = '';
+    let offX = 0;
+    let offY = 0;
+
+    const moveGhost = (x, y) => {
+      item.style.left = `${x - offX}px`;
+      item.style.top = `${y - offY}px`;
+    };
+
+    const placePlaceholder = (x, y) => {
+      const cont = container();
+      const before = dropBefore(x, y);
+      if (before) {
+        if (before !== placeholder) cont.insertBefore(placeholder, before);
+      } else if (placeholder !== cont.lastElementChild) {
+        cont.appendChild(placeholder);
+      }
+    };
+
     makePointerDrag(handle, {
-      onStart: () => card.classList.add('dragging'),
+      onStart: (x, y) => {
+        const r = item.getBoundingClientRect();
+        offX = x - r.left;
+        offY = y - r.top;
+
+        placeholder = document.createElement('div');
+        placeholder.className = `${item.className} drag-placeholder`;
+        placeholder.style.cssText = `height:${r.height}px`;
+        // Match the grid span so the layout doesn't jump when swapping in/out.
+        const span = item.style.getPropertyValue('--span');
+        if (span) placeholder.style.setProperty('--span', span);
+        item.after(placeholder);
+
+        // Detach to <body> so position:fixed isn't clipped by an overflow:hidden
+        // ancestor (group cards clip; service rows live inside one).
+        savedStyle = item.getAttribute('style') || '';
+        item.classList.add('dragging');
+        document.body.appendChild(item);
+        item.style.cssText =
+          `${savedStyle};position:fixed;margin:0;width:${r.width}px;height:${r.height}px;` +
+          `z-index:1000;pointer-events:none;`;
+        moveGhost(x, y);
+      },
       onMove: (x, y) => {
-        const target = nearestGroup(x, y);
-        const c = container();
-        if (!target) c.appendChild(card);
-        else if (target.before) c.insertBefore(card, target.el);
-        else c.insertBefore(card, target.el.nextSibling);
+        moveGhost(x, y);
+        placePlaceholder(x, y);
       },
       onEnd: () => {
-        card.classList.remove('dragging');
-        saveOrder();
+        placeholder.replaceWith(item);
+        placeholder = null;
+        item.classList.remove('dragging');
+        if (savedStyle) item.setAttribute('style', savedStyle);
+        else item.removeAttribute('style');
+        onCommit();
       },
     });
   }
 
-  // Closest non-dragged card to the pointer, with a guess at before/after.
+  function enableGroupDrag(card) {
+    const handle = card.querySelector('.group-drag');
+    if (!handle) return;
+    ghostDrag(handle, {
+      item: card,
+      container: () => $('groups-container'),
+      dropBefore: groupDropBefore,
+      onCommit: saveOrder,
+    });
+  }
+
+  // The card the dragged one should sit *before* in reading order (top→bottom,
+  // left→right), or null to drop at the end. Walking the cards in DOM order and
+  // returning the first that's "after" the pointer is monotonic, so live
+  // reordering settles instead of oscillating the way nearest-by-distance did.
   // Hidden cards (other tabs / filtered out) have a zero-size rect — skip them.
-  function nearestGroup(x, y) {
-    let best = null;
-    document.querySelectorAll('#groups-container .group:not(.dragging)').forEach((el) => {
+  function groupDropBefore(x, y) {
+    const cards = document.querySelectorAll('#groups-container .group:not(.dragging):not(.drag-placeholder)');
+    for (const el of cards) {
       const r = el.getBoundingClientRect();
-      if (!r.width && !r.height) return;
+      if (!r.width && !r.height) continue;
       const cx = r.left + r.width / 2;
       const cy = r.top + r.height / 2;
-      const dist = Math.hypot(x - cx, y - cy);
-      if (!best || dist < best.dist) {
-        best = { dist, el, before: y < cy - 4 || (Math.abs(y - cy) <= r.height / 2 && x < cx) };
-      }
-    });
-    return best;
+      const rowDelta = y - cy;
+      if (rowDelta < -r.height / 2) return el; // pointer is in a row above this card
+      if (Math.abs(rowDelta) <= r.height / 2 && x < cx) return el; // same row, left of it
+    }
+    return null;
   }
 
   // ── Services: drag-to-reorder within a group ─────────
   function enableServiceDrag(a, group) {
     const handle = a.querySelector('.service-drag');
     if (!handle) return;
-    const listOf = () => a.closest('.service-list');
-    makePointerDrag(handle, {
-      onStart: () => a.classList.add('dragging'),
-      onMove: (_x, y) => {
-        const list = listOf();
-        if (!list) return;
-        const after = nearestService(list, y);
-        if (!after) list.appendChild(a);
-        else if (after !== a) list.insertBefore(a, after);
-      },
-      onEnd: () => {
-        const list = listOf();
-        a.classList.remove('dragging');
+    // The list is captured at drag start: services only reorder within their own
+    // group, so the placeholder stays in this one list.
+    let list = null;
+    ghostDrag(handle, {
+      item: a,
+      container: () => list,
+      dropBefore: (_x, y) => nearestService(list, y),
+      onCommit: () => {
         if (list) saveServiceOrder(group.name, list);
       },
     });
+    // ghostDrag reads container() on start, so resolve the list just before.
+    handle.addEventListener(
+      'pointerdown',
+      () => {
+        list = a.closest('.service-list');
+      },
+      true,
+    );
   }
 
   // First service whose vertical midpoint is below the pointer (insert before it).
   function nearestService(list, y) {
-    const items = [...list.querySelectorAll('.service:not(.dragging)')];
+    if (!list) return null;
+    const items = list.querySelectorAll('.service:not(.dragging):not(.drag-placeholder)');
     for (const el of items) {
       const r = el.getBoundingClientRect();
       if (y < r.top + r.height / 2) return el;

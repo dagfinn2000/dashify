@@ -424,7 +424,24 @@ main {
 
 .group:hover .group-drag { opacity: 0.6; }
 .group-drag:active { cursor: grabbing; }
-.group.dragging { opacity: 0.4; }
+
+/* The dragged item floats under the cursor (position:fixed, set inline in JS). */
+.group.dragging,
+.service.dragging {
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+  opacity: 0.92;
+  cursor: grabbing;
+}
+
+/* Same-size slot that shows where the item will drop. */
+.drag-placeholder {
+  border: 2px dashed var(--accent) !important;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 9%, transparent) !important;
+  box-shadow: none !important;
+}
+
+.drag-placeholder * { visibility: hidden; }
 
 /* Collapse caret + collapsed state */
 .group-collapse {
@@ -476,7 +493,6 @@ main {
 
 .service:last-child { border-bottom: none; }
 .service:hover { background: var(--bg-card-hover); }
-.service.dragging { opacity: 0.4; }
 
 /* Drag-to-reorder grip — sits in the left gutter, appears on hover */
 .service-drag {
