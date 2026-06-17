@@ -10,7 +10,8 @@ A lightweight, self-hosted **status page and service dashboard** configured enti
 - Instant client-side filter (press `/`), an optional **web-search box**, and current **weather** (temperature + condition icon) in the header
 - **Named tabs**, **collapsible** groups, and **drag-to-reorder** for both groups *and* the services inside them, plus one-click **theme presets** (Dracula, Catppuccin, Gruvbox, Everforest, Kanagawa, …), dark / light / auto modes, custom **background image**, and configurable columns
 - **RSS / Atom feed pane** beside your cards — add and remove feeds right from the dashboard
-- Edit `config/config.yaml` and changes apply **live** — no restart, and a YAML typo shows a clear error banner instead of a blank page
+- Edit `config/config.yaml` on the host **or right in the browser** (gear icon → Settings) and changes apply **live** — no restart, and a YAML typo shows a clear error instead of a blank page
+- **Export / import** your per-browser layout & theme tweaks to move between devices, and an optional **colourblind-safe ✓/✕/? status glyph** mode
 - Runs in Docker (non-root, with a healthcheck) or an LXC, exposed on port **6969**
 
 ---
@@ -111,6 +112,8 @@ groups:
 | `timeout` | top-level | Default health-check timeout in seconds (per-service `timeout` overrides it) |
 | `status_cache_ttl` | top-level | Seconds the server caches `/api/status` so multiple open tabs share one sweep (`0` disables) |
 | `widget_cache_ttl` | top-level | Seconds the server caches widget API data (default `30`, `0` disables) |
+| `config_editor` | top-level | Allow editing `config.yaml` / `RSS.yaml` from the browser (default `true`; set `false` to disable) — see [Editing config in the browser](#editing-config-in-the-browser) |
+| `status_glyphs` | top-level | Default for the colourblind-safe ✓/✕/? status glyphs (default `false`; also toggleable per browser) — see [Colourblind glyphs](#colourblind-glyphs) |
 | RSS feeds | `config/RSS.yaml` | Feeds shown in the side pane live in their own file — see [RSS feeds](#rss-feeds) |
 | `icon_format` | top-level | dashboard-icons asset type: `svg` (default), `png`, or `webp` |
 | `background` | top-level | Optional background image — a URL or a filename dropped in `config/` (see [Background image](#background-image)) |
@@ -135,7 +138,7 @@ groups:
 
 The status dot turns **green** when the service responds (HTTP < 400, or matches `expect_status`), **red** when it's unreachable or times out, and **gray** when `check` is off. Hover a dot to see the response time.
 
-**Tips:** press `/` to jump to the filter box, use the header toggle to switch theme, and a live clock sits next to the title — click it (or the `24h`/`12h` button) to switch between 24-hour and AM/PM. **Click a group's header to collapse it, drag the grip (⠿) in a group header to reorder groups, and drag the grip on a service row (hover to reveal it) to reorder services within a group.** All of these are remembered in the browser. A filter search reaches across every tab.
+**Tips:** press `/` to jump to the filter box, use the header toggle to switch theme, and a live clock sits next to the title — click it (or the `24h`/`12h` button) to switch between 24-hour and AM/PM. **Click a group's header to collapse it, drag the grip (⠿) in a group header to reorder groups, and drag the grip on a service row (hover to reveal it) to reorder services within a group** — dragging works with both mouse and touch, and the grips stay visible on touch devices. All of these are remembered in the browser. A filter search reaches across every tab.
 
 ### Icons
 
@@ -252,6 +255,36 @@ groups:
 
 The active tab is remembered per browser, and the header filter searches across
 **all** tabs so nothing hides from a search.
+
+### Editing config in the browser
+
+Click the **gear icon** in the header to open **Settings**, where you can edit
+`config.yaml` and `RSS.yaml` directly and **Save** — the change is written to disk
+and applied live, exactly as if you'd edited the file on the host. A YAML typo is
+rejected with a clear error *before* anything is written, so a bad save can't take
+the dashboard down. **Revert** reloads the file from disk.
+
+> **Security & Docker note.** The raw file is served to anyone who can reach the
+> dashboard, so keep secrets in `.env` and reference them as `${VAR}` rather than
+> hard-coding them. Saving requires the config directory to be writable: the
+> Docker Compose file now mounts `./config` **read-write** — if you'd rather edit
+> only from the host, add `:ro` back to the mount (the editor then shows the file
+> as read-only). Set `config_editor: false` to disable the feature entirely.
+
+### Backup & restore
+
+Per-browser customizations — group/service order, column sizes, collapsed groups,
+in-page theme tweaks, clock format, glyph toggle, and your feed list — live in the
+browser's local storage. Open **Settings → Backup** to **Export** them to a
+`dashify-settings.json` file (or **Copy** to the clipboard), then **Import** that
+file in another browser or on another device to bring your whole setup with you.
+
+### Colourblind glyphs
+
+Status is normally shown by the colour of each dot. Turn on **Colourblind glyphs**
+in the palette panel (or set `status_glyphs: true` in `config.yaml`) to also draw a
+shape inside each dot — **✓** up, **✕** down, **?** unknown — so status no longer
+relies on colour alone. The toggle is remembered per browser.
 
 ---
 

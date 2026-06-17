@@ -7,8 +7,10 @@ services:
     ports:
       - "6969:6969"
     volumes:
-      # Mount your config directory so edits are picked up live without rebuilding
-      - ./config:/app/config:ro
+      # Mount your config directory so edits are picked up live without rebuilding.
+      # Writable (no :ro) so the in-browser config editor can save back to disk;
+      # add ":ro" again if you prefer to edit config.yaml only from the host.
+      - ./config:/app/config
     # Load secrets (e.g. widget API passwords) from a local .env file into the
     # container, then reference them in config.yaml as ${VAR}. Copy .env.example
     # to .env and fill it in — .env is gitignored so secrets stay off GitHub.

@@ -26,6 +26,7 @@
   };
 
   const CLOCK_KEY = 'dashify-clock';
+  const GLYPH_KEY = 'dashify-glyphs';
   const RSS_KEY = 'dashify-rss';
   const RSS_PANE_KEY = 'dashify-rss-pane';
   const COLLAPSED_KEY = 'dashify-collapsed';
@@ -73,18 +74,33 @@
     await loadConfig();
     activeTab = store.get(ACTIVE_TAB_KEY);
     applyTheme();
+    applyGlyphs();
     applyBackground();
     applyAppearance();
     feeds = loadFeeds();
     applyRssPane();
     applyHeaderExtras();
+    document.body.classList.add('app-loading'); // shimmer until first data arrives
     renderGroups();
     renderFeeds();
     await refreshAll();
+    document.body.classList.remove('app-loading');
+    clearStaleSkeletons();
     scheduleRefresh();
     wireControls();
     startClock();
     startWeather();
+  }
+
+  // Hide any widget skeletons that never received data (e.g. the first widget
+  // fetch failed) so a placeholder doesn't shimmer forever.
+  function clearStaleSkeletons() {
+    document.querySelectorAll('.service-stats').forEach((host) => {
+      if (host.querySelector('.stat-skel')) {
+        host.innerHTML = '';
+        host.style.display = 'none';
+      }
+    });
   }
 
   function wireControls() {
@@ -122,12 +138,28 @@
       }
     });
 
+    buildSettingsModal();
+    $('settings-btn').addEventListener('click', openSettings);
+
     $('rss-toggle').addEventListener('click', toggleRssPane);
     $('rss-add').addEventListener('submit', onAddFeed);
     $('rss-refresh').addEventListener('click', () => loadAllFeeds(true));
 
     $('web-search').addEventListener('submit', onWebSearch);
-    wireGroupReorder();
+
+    // Swallow the click that immediately follows a drag so a reordered service
+    // link doesn't navigate (capture phase, before the anchor's own handler).
+    document.addEventListener(
+      'click',
+      (e) => {
+        if (suppressNextClick) {
+          e.preventDefault();
+          e.stopPropagation();
+          suppressNextClick = false;
+        }
+      },
+      true,
+    );
 
     const filter = $('filter');
     filter.addEventListener('input', applyFilter);
@@ -225,6 +257,28 @@
     const next = current === 'light' ? 'dark' : 'light';
     store.set(THEME_KEY, next);
     applyTheme();
+  }
+
+  // ── Colourblind-safe status glyphs (✓ / ✕ / ?) ───────
+  // A per-browser toggle, defaulting to config.status_glyphs. When on, status
+  // dots also carry a shape so up/down/unknown don't rely on colour alone.
+  function resolveGlyphs() {
+    const v = store.get(GLYPH_KEY);
+    if (v === '1') return true;
+    if (v === '0') return false;
+    return config?.status_glyphs === true;
+  }
+
+  function applyGlyphs() {
+    const on = resolveGlyphs();
+    document.documentElement.classList.toggle('glyphs', on);
+    const cb = document.querySelector('.cp-glyphs');
+    if (cb) cb.checked = on;
+  }
+
+  function setGlyphs(on) {
+    store.set(GLYPH_KEY, on ? '1' : '0');
+    applyGlyphs();
   }
 
   // ── Clock ────────────────────────────────────────────
@@ -453,6 +507,7 @@
       <div class="cp-presets"></div>
       <div class="cp-section-label">Fine-tune · <span class="cp-theme"></span></div>
       <div class="cp-rows"></div>
+      <label class="cp-check"><input type="checkbox" class="cp-glyphs" /><span>Colourblind glyphs (✓ ✕ ?)</span></label>
       <div class="cp-footer">
         <button class="cp-copy" type="button">Copy YAML</button>
         <button class="cp-reset" type="button">Reset</button>
@@ -502,6 +557,9 @@
       applyColors();
     });
     panel.querySelector('.cp-copy').addEventListener('click', copyColorYaml);
+    const glyphCb = panel.querySelector('.cp-glyphs');
+    glyphCb.checked = resolveGlyphs();
+    glyphCb.addEventListener('change', () => setGlyphs(glyphCb.checked));
     document.body.appendChild(panel);
   }
 
@@ -806,7 +864,7 @@
       card.style.setProperty('--span', spanFor(group));
       card.innerHTML = `
         <div class="group-header">
-          <span class="group-drag" title="Drag to reorder" aria-hidden="true" draggable="true">⠿</span>
+          <span class="group-drag" title="Drag to reorder" aria-hidden="true">⠿</span>
           <span class="group-name">${esc(group.name)}</span>
           <span class="group-collapse" aria-hidden="true">▾</span>
         </div>
@@ -832,7 +890,6 @@
       enableGroupDrag(card);
 
       const list = card.querySelector('.service-list');
-      wireServiceReorder(list);
       orderedServices(group).forEach((svc) => {
         list.appendChild(buildServiceEl(group, svc));
       });
@@ -858,7 +915,7 @@
       : '';
 
     a.innerHTML = `
-      <span class="service-drag" title="Drag to reorder" aria-hidden="true" draggable="true">⠿</span>
+      <span class="service-drag" title="Drag to reorder" aria-hidden="true">⠿</span>
       <span class="service-info">
         <span class="service-name">${esc(svc.name)}</span>
         ${svc.description ? `<span class="service-desc">${esc(svc.description)}</span>` : ''}
@@ -871,6 +928,14 @@
     wrap.className = 'service-icon';
     wrap.appendChild(buildIcon(svc.icon, svc.name, true));
     a.insertBefore(wrap, a.querySelector('.service-info'));
+
+    // Services that expose a widget get a shimmer placeholder until the first
+    // /api/widgets response replaces it (or clearStaleSkeletons hides it).
+    if (svc.has_widget) {
+      const host = a.querySelector('.service-stats');
+      host.innerHTML = '<span class="stat-skel"></span><span class="stat-skel"></span><span class="stat-skel"></span>';
+      host.style.display = '';
+    }
 
     enableServiceDrag(a, group);
     return a;
@@ -1169,33 +1234,80 @@
     store.setJSON(ORDER_KEY, names);
   }
 
-  let draggingCard = null;
+  // Set right after a drag so the synthetic click that follows is swallowed.
+  let suppressNextClick = false;
+
+  // Pointer-based dragging from a grip handle. Replaces HTML5 drag-and-drop so
+  // reordering works with touch as well as a mouse. A small movement threshold
+  // distinguishes a drag from a tap, and pointer capture keeps the gesture even
+  // as the dragged element moves out from under the finger/cursor.
+  function makePointerDrag(handle, { onStart, onMove, onEnd }) {
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button && e.button !== 0) return; // primary button / touch only
+      const sx = e.clientX;
+      const sy = e.clientY;
+      let active = false;
+
+      const move = (ev) => {
+        if (!active) {
+          if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+          active = true;
+          document.body.classList.add('dragging-active');
+          onStart();
+        }
+        onMove(ev.clientX, ev.clientY);
+      };
+      const finish = () => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', finish);
+        handle.removeEventListener('pointercancel', finish);
+        try {
+          handle.releasePointerCapture(e.pointerId);
+        } catch {}
+        if (active) {
+          document.body.classList.remove('dragging-active');
+          onEnd();
+          suppressNextClick = true;
+          setTimeout(() => {
+            suppressNextClick = false;
+          }, 60);
+        }
+      };
+
+      try {
+        handle.setPointerCapture(e.pointerId);
+      } catch {}
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', finish);
+      handle.addEventListener('pointercancel', finish);
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    // The grip's own click must never navigate (service) or collapse (group).
+    handle.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  }
 
   function enableGroupDrag(card) {
     const handle = card.querySelector('.group-drag');
     if (!handle) return;
-    handle.addEventListener('dragstart', (e) => {
-      draggingCard = card;
-      card.classList.add('dragging');
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', card.dataset.group || '');
-    });
-    handle.addEventListener('dragend', () => {
-      card.classList.remove('dragging');
-      draggingCard = null;
-      saveOrder();
-    });
-  }
-
-  function wireGroupReorder() {
-    $('groups-container').addEventListener('dragover', (e) => {
-      if (!draggingCard) return;
-      e.preventDefault();
-      const target = nearestGroup(e.clientX, e.clientY);
-      const container = $('groups-container');
-      if (!target) container.appendChild(draggingCard);
-      else if (target.before) container.insertBefore(draggingCard, target.el);
-      else container.insertBefore(draggingCard, target.el.nextSibling);
+    const container = () => $('groups-container');
+    makePointerDrag(handle, {
+      onStart: () => card.classList.add('dragging'),
+      onMove: (x, y) => {
+        const target = nearestGroup(x, y);
+        const c = container();
+        if (!target) c.appendChild(card);
+        else if (target.before) c.insertBefore(card, target.el);
+        else c.insertBefore(card, target.el.nextSibling);
+      },
+      onEnd: () => {
+        card.classList.remove('dragging');
+        saveOrder();
+      },
     });
   }
 
@@ -1217,39 +1329,24 @@
   }
 
   // ── Services: drag-to-reorder within a group ─────────
-  let draggingSvc = null;
-
   function enableServiceDrag(a, group) {
     const handle = a.querySelector('.service-drag');
     if (!handle) return;
-    // The grip lives inside the link — don't navigate when it's clicked.
-    handle.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    });
-    handle.addEventListener('dragstart', (e) => {
-      e.stopPropagation(); // don't also start a group drag
-      draggingSvc = a;
-      a.classList.add('dragging');
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', a.dataset.svcName || '');
-    });
-    handle.addEventListener('dragend', () => {
-      const list = a.closest('.service-list');
-      a.classList.remove('dragging');
-      draggingSvc = null;
-      if (list) saveServiceOrder(group.name, list);
-    });
-  }
-
-  function wireServiceReorder(list) {
-    list.addEventListener('dragover', (e) => {
-      if (!draggingSvc || draggingSvc.closest('.service-list') !== list) return;
-      e.preventDefault();
-      e.stopPropagation(); // keep the group container from also reordering
-      const after = nearestService(list, e.clientY);
-      if (!after) list.appendChild(draggingSvc);
-      else list.insertBefore(draggingSvc, after);
+    const listOf = () => a.closest('.service-list');
+    makePointerDrag(handle, {
+      onStart: () => a.classList.add('dragging'),
+      onMove: (_x, y) => {
+        const list = listOf();
+        if (!list) return;
+        const after = nearestService(list, y);
+        if (!after) list.appendChild(a);
+        else if (after !== a) list.insertBefore(a, after);
+      },
+      onEnd: () => {
+        const list = listOf();
+        a.classList.remove('dragging');
+        if (list) saveServiceOrder(group.name, list);
+      },
     });
   }
 
@@ -1348,6 +1445,254 @@
       });
       group.style.display = inTab && visible ? '' : 'none';
     });
+  }
+
+  // ── Settings modal (config editor + backup) ─────────
+  const BACKUP_PREFIX = 'dashify-';
+  let settingsEl = null;
+
+  function buildSettingsModal() {
+    const overlay = document.createElement('div');
+    overlay.id = 'settings-overlay';
+    overlay.className = 'modal-overlay';
+    overlay.hidden = true;
+    const editorPane = (file, title) => `
+      <section class="modal-pane" data-pane="${file}" ${file === 'config' ? '' : 'hidden'}>
+        <textarea class="cfg-editor" data-file="${file}" spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off" aria-label="${title}"></textarea>
+        <div class="cfg-foot">
+          <button class="cfg-save btn-accent" data-file="${file}" type="button">Save</button>
+          <button class="cfg-revert btn" data-file="${file}" type="button">Revert</button>
+          <span class="cfg-msg" data-file="${file}"></span>
+        </div>
+      </section>`;
+    overlay.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-label="Settings">
+        <div class="modal-head">
+          <span class="modal-title">Settings</span>
+          <button class="modal-close icon-btn" type="button" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-tabs" role="tablist">
+          <button class="modal-tab active" data-pane="config" type="button">config.yaml</button>
+          <button class="modal-tab" data-pane="rss" type="button">RSS.yaml</button>
+          <button class="modal-tab" data-pane="backup" type="button">Backup</button>
+        </div>
+        <div class="modal-body">
+          ${editorPane('config', 'config.yaml')}
+          ${editorPane('rss', 'RSS.yaml')}
+          <section class="modal-pane" data-pane="backup" hidden>
+            <p class="modal-note">Your layout (group &amp; service order, column sizes, collapsed groups), in-browser theme tweaks, clock format, and feed list live in <strong>this browser only</strong>. Export them to carry your setup to another device or browser.</p>
+            <div class="cfg-foot">
+              <button class="backup-export btn-accent" type="button">Export file</button>
+              <button class="backup-import btn" type="button">Import file…</button>
+              <button class="backup-copy btn" type="button">Copy</button>
+              <span class="cfg-msg backup-msg"></span>
+            </div>
+            <input class="backup-file" type="file" accept="application/json,.json" hidden />
+          </section>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    settingsEl = overlay;
+
+    overlay.querySelectorAll('.modal-tab').forEach((tab) => {
+      tab.addEventListener('click', () => showPane(tab.dataset.pane));
+    });
+    overlay.querySelector('.modal-close').addEventListener('click', closeSettings);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeSettings();
+    });
+    overlay.querySelectorAll('.cfg-save').forEach((b) =>
+      b.addEventListener('click', () => saveRaw(b.dataset.file)),
+    );
+    overlay.querySelectorAll('.cfg-revert').forEach((b) =>
+      b.addEventListener('click', () => loadRaw(b.dataset.file)),
+    );
+
+    overlay.querySelector('.backup-export').addEventListener('click', exportBackup);
+    overlay.querySelector('.backup-copy').addEventListener('click', copyBackup);
+    const fileInput = overlay.querySelector('.backup-file');
+    overlay.querySelector('.backup-import').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) return;
+      importBackupText(await f.text());
+      fileInput.value = '';
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !overlay.hidden) closeSettings();
+    });
+  }
+
+  function showPane(name) {
+    if (!settingsEl) return;
+    settingsEl.querySelectorAll('.modal-tab').forEach((t) =>
+      t.classList.toggle('active', t.dataset.pane === name),
+    );
+    settingsEl.querySelectorAll('.modal-pane').forEach((p) => {
+      p.hidden = p.dataset.pane !== name;
+    });
+  }
+
+  function openSettings() {
+    if (!settingsEl) return;
+    settingsEl.hidden = false;
+    document.body.classList.add('modal-open');
+    showPane('config');
+    loadRaw('config');
+    loadRaw('rss');
+  }
+
+  function closeSettings() {
+    if (settingsEl) settingsEl.hidden = true;
+    document.body.classList.remove('modal-open');
+  }
+
+  const cfgEl = (cls, file) => settingsEl.querySelector(`.${cls}[data-file="${file}"]`);
+
+  function setCfgMsg(file, text, cls = '') {
+    const el = cfgEl('cfg-msg', file);
+    if (el) {
+      el.textContent = text;
+      el.className = 'cfg-msg' + (cls ? ' ' + cls : '');
+    }
+  }
+
+  async function loadRaw(file) {
+    const ta = cfgEl('cfg-editor', file);
+    const save = cfgEl('cfg-save', file);
+    if (!ta) return;
+    setCfgMsg(file, 'Loading…');
+    try {
+      const res = await fetch('/api/config/raw?file=' + encodeURIComponent(file));
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 403) {
+        ta.value = '';
+        ta.disabled = true;
+        save.disabled = true;
+        setCfgMsg(file, 'Editing is disabled (config_editor: false in config.yaml).', 'warn');
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      ta.value = data.content || '';
+      ta.disabled = false;
+      if (data.editable) {
+        save.disabled = false;
+        setCfgMsg(file, '');
+      } else {
+        save.disabled = true;
+        setCfgMsg(file, 'File is read-only — can’t save here (see the Docker mount note in the README).', 'warn');
+      }
+    } catch (e) {
+      setCfgMsg(file, e.message || 'Failed to load', 'err');
+    }
+  }
+
+  async function saveRaw(file) {
+    const ta = cfgEl('cfg-editor', file);
+    const save = cfgEl('cfg-save', file);
+    if (!ta) return;
+    save.disabled = true;
+    setCfgMsg(file, 'Saving…');
+    try {
+      const res = await fetch('/api/config/raw?file=' + encodeURIComponent(file), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ content: ta.value }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCfgMsg(file, data.error || `HTTP ${res.status}`, 'err');
+        save.disabled = false;
+        return;
+      }
+      setCfgMsg(file, 'Saved ✓ — reloading…', 'ok');
+      setTimeout(() => location.reload(), 650);
+    } catch (e) {
+      setCfgMsg(file, e.message || 'Save failed', 'err');
+      save.disabled = false;
+    }
+  }
+
+  // ── Backup: export / import the per-browser customizations ──
+  function collectBackup() {
+    const out = {};
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(BACKUP_PREFIX)) out[k] = localStorage.getItem(k);
+      }
+    } catch {}
+    return out;
+  }
+
+  const backupJson = () =>
+    JSON.stringify({ _dashify_backup: 1, exported: new Date().toISOString(), data: collectBackup() }, null, 2);
+
+  function setBackupMsg(text, cls = '') {
+    const el = settingsEl && settingsEl.querySelector('.backup-msg');
+    if (el) {
+      el.textContent = text;
+      el.className = 'cfg-msg backup-msg' + (cls ? ' ' + cls : '');
+    }
+  }
+
+  function exportBackup() {
+    try {
+      const blob = new Blob([backupJson()], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'dashify-settings.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setBackupMsg('Exported dashify-settings.json', 'ok');
+    } catch (e) {
+      setBackupMsg(e.message || 'Export failed', 'err');
+    }
+  }
+
+  function copyBackup() {
+    const text = backupJson();
+    const done = () => setBackupMsg('Copied to clipboard', 'ok');
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, () => setBackupMsg('Copy failed', 'err'));
+    else done();
+  }
+
+  function importBackupText(text) {
+    let obj;
+    try {
+      obj = JSON.parse(text);
+    } catch {
+      setBackupMsg('Not a valid JSON file', 'err');
+      return;
+    }
+    // Accept either a wrapped export ({ data: {…} }) or a flat key map.
+    const data = obj && typeof obj.data === 'object' && obj.data ? obj.data : obj;
+    if (!data || typeof data !== 'object') {
+      setBackupMsg('Not a Dashify backup', 'err');
+      return;
+    }
+    let n = 0;
+    try {
+      for (const [k, v] of Object.entries(data)) {
+        if (k.startsWith(BACKUP_PREFIX) && typeof v === 'string') {
+          localStorage.setItem(k, v);
+          n++;
+        }
+      }
+    } catch {
+      setBackupMsg('Storage unavailable in this browser', 'err');
+      return;
+    }
+    if (!n) {
+      setBackupMsg('No Dashify settings found in that file', 'err');
+      return;
+    }
+    setBackupMsg(`Imported ${n} settings — reloading…`, 'ok');
+    setTimeout(() => location.reload(), 650);
   }
 
   // ── Helpers ──────────────────────────────────────────

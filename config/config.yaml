@@ -9,6 +9,11 @@ refresh_interval: 30       # seconds between status re-checks (set to 0 to disab
 columns: 3                 # number of service group columns (1-4)
 timeout: 5                 # default health-check timeout in seconds (per-service override below)
 status_cache_ttl: 5        # seconds the server caches results so open tabs share one check
+config_editor: true        # edit this file from the browser (gear icon → Settings); set
+                           # false to disable. Keep secrets in .env as ${VAR}, since the
+                           # raw file is shown to anyone who can reach the dashboard.
+status_glyphs: false       # default for colourblind-safe ✓/✕/? status glyphs (each
+                           # browser can also toggle this from the palette panel)
 
 # Header extras
 search: true               # web-search box in the header (true/false, or a URL

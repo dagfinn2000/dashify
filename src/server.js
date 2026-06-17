@@ -1,5 +1,5 @@
 import express from 'express';
-import { readFileSync, watchFile } from 'node:fs';
+import { readFileSync, writeFileSync, watchFile, accessSync, constants } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import http from 'node:http';
@@ -27,6 +27,8 @@ const DEFAULTS = Object.freeze({
   rss: [],              // optional RSS/Atom feed URLs seeded into the side pane
   rss_item_limit: 6,    // max items shown per feed
   rss_cache_ttl: 300,   // seconds the server caches each fetched feed
+  config_editor: true,  // allow editing config.yaml / RSS.yaml from the browser
+  status_glyphs: false, // default for the colourblind-safe ✓/✕/? status glyphs
 });
 
 // Strip server-only secrets (widget API keys/passwords) before sending config
@@ -325,6 +327,7 @@ const widgetsCache = makeCached(computeWidgets, () => config.widget_cache_ttl);
 // ── App ───────────────────────────────────────────────────────
 export const app = express();
 app.disable('x-powered-by');
+app.use(express.json({ limit: '512kb' }));
 app.use(express.static(join(__dirname, 'public')));
 
 // Serve the user's config directory so they can drop in their own assets
@@ -337,6 +340,65 @@ app.get('/healthz', (_req, res) => {
 
 app.get('/api/config', (_req, res) => {
   res.json(publicConfig(config));
+});
+
+// ── In-browser config editor ──────────────────────────────────
+// Read/write the raw config.yaml (or RSS.yaml) so the dashboard can be edited
+// from the browser. Gated by `config_editor` (default on). The raw file is
+// served as-is — keep secrets in .env (referenced as ${VAR}) rather than inline,
+// since anyone who can reach the dashboard can read what's returned here.
+const editableFile = (param) => (param === 'rss' ? 'rss' : 'config');
+const filePath = (which) => (which === 'rss' ? rssConfigPath(CONFIG_PATH) : CONFIG_PATH);
+
+function canWrite(path) {
+  try {
+    accessSync(path, constants.W_OK);
+    return true;
+  } catch {
+    // The file may not exist yet (RSS.yaml is optional) — fall back to its dir.
+    try {
+      accessSync(dirname(path), constants.W_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+app.get('/api/config/raw', (req, res) => {
+  if (config.config_editor === false) return res.status(403).json({ error: 'config editing is disabled' });
+  const which = editableFile(req.query.file);
+  const path = filePath(which);
+  let content = '';
+  try {
+    content = readFileSync(path, 'utf8');
+  } catch (e) {
+    if (e.code !== 'ENOENT') return res.status(500).json({ error: e.message });
+  }
+  res.set('Cache-Control', 'no-store');
+  res.json({ file: which, content, editable: canWrite(path) });
+});
+
+app.post('/api/config/raw', (req, res) => {
+  if (config.config_editor === false) return res.status(403).json({ error: 'config editing is disabled' });
+  const which = editableFile(req.query.file);
+  const path = filePath(which);
+  const content = typeof req.body?.content === 'string' ? req.body.content : null;
+  if (content == null) return res.status(400).json({ error: 'missing "content"' });
+  // Validate before touching disk so a typo can't take the dashboard down.
+  try {
+    yaml.load(content);
+  } catch (e) {
+    return res.status(422).json({ error: `YAML error: ${e.message}` });
+  }
+  try {
+    writeFileSync(path, content, 'utf8');
+  } catch (e) {
+    const msg = e.code === 'EROFS' || e.code === 'EACCES' ? 'file is read-only (see the Docker mount note in the README)' : e.message;
+    return res.status(500).json({ error: `couldn't save: ${msg}` });
+  }
+  reloadConfig('editor save');
+  res.json({ ok: true, config_error: config.config_error });
 });
 
 // Both /api/status and /api/widgets are just a cached compute exposed as JSON,
@@ -361,6 +423,17 @@ cachedRoute('/api/widgets', widgetsCache, 'widget fetch failed');
 // user add feeds at runtime, so the URL is supplied per-request; we accept any
 // http(s) URL (this is a single-user LAN dashboard) and cache each one briefly.
 const feedCache = new Map(); // url -> { at, data }
+
+// Re-read config from disk and drop all caches. Shared by the file watcher and
+// the in-browser config editor so a save takes effect immediately.
+function reloadConfig(reason = 'changed') {
+  config = loadConfig();
+  statusCache.reset();
+  widgetsCache.reset();
+  feedCache.clear();
+  console.log(`Config reloaded (${reason})`);
+  return config;
+}
 
 app.get('/api/rss', async (req, res) => {
   const url = String(req.query.url || '');
@@ -392,22 +465,13 @@ app.get('/api/rss', async (req, res) => {
 });
 
 export function start(port = PORT) {
-  config = loadConfig();
-  statusCache.reset();
-  widgetsCache.reset();
-  feedCache.clear();
+  reloadConfig('startup');
 
   const server = app.listen(port, () => {
     console.log(`Dashify running on http://0.0.0.0:${port}`);
   });
 
-  const reload = () => {
-    config = loadConfig();
-    statusCache.reset();
-    widgetsCache.reset();
-    feedCache.clear();
-    console.log('Config reloaded');
-  };
+  const reload = () => reloadConfig('file changed');
   // Watch both the main config and the separate RSS.yaml for live edits.
   watchFile(CONFIG_PATH, { interval: 1000 }, reload);
   watchFile(rssConfigPath(CONFIG_PATH), { interval: 1000 }, reload);
