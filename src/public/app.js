@@ -360,7 +360,7 @@
   ];
 
   // The CSS variables config / the editor are allowed to override.
-  const OVERRIDABLE = COLOR_FIELDS.map(([key]) => key);
+  const OVERRIDABLE = new Set(COLOR_FIELDS.map(([key]) => key));
 
   // ── Preset themes ────────────────────────────────────
   // Curated palettes selectable from the colour panel. `base: true` entries are
@@ -431,7 +431,7 @@
       const map = { ...flat, ...((theme === 'light' ? light : dark) || {}) };
       for (const [key, value] of Object.entries(map)) {
         const name = String(key).replace(/_/g, '-');
-        if (OVERRIDABLE.includes(name) && typeof value === 'string') {
+        if (OVERRIDABLE.has(name) && typeof value === 'string') {
           root.style.setProperty(`--${name}`, value.replace(/[<>]/g, ''));
         }
       }
@@ -439,15 +439,15 @@
 
     // 3) a selected preset theme for the active mode
     const preset = presetById(presetSelection[theme]);
-    if (preset && preset.colors) {
+    if (preset?.colors) {
       for (const [name, value] of Object.entries(preset.colors)) {
-        if (OVERRIDABLE.includes(name)) root.style.setProperty(`--${name}`, value);
+        if (OVERRIDABLE.has(name)) root.style.setProperty(`--${name}`, value);
       }
     }
 
     // 4) in-page editor overrides for the active theme (highest precedence)
     for (const [name, value] of Object.entries(colorOverrides[theme] || {})) {
-      if (OVERRIDABLE.includes(name) && typeof value === 'string') {
+      if (OVERRIDABLE.has(name) && typeof value === 'string') {
         root.style.setProperty(`--${name}`, value);
       }
     }
@@ -589,7 +589,7 @@
     // Export the full effective palette (preset + manual tweaks) so a chosen
     // theme can be baked into config.yaml for every device.
     const preset = presetById(presetSelection[theme]);
-    const map = { ...((preset && preset.colors) || {}), ...(colorOverrides[theme] || {}) };
+    const map = { ...(preset?.colors || {}), ...(colorOverrides[theme] || {}) };
     const keys = Object.keys(map);
     const note = $('color-panel').querySelector('.cp-note');
     if (!keys.length) {
@@ -824,17 +824,19 @@
   // ── Service order (drag-to-reorder within a group) ───
   let serviceOrders = store.getJSON(SERVICE_ORDER_KEY, {});
 
-  // Saved order first (in its stored sequence), then any new services in config order.
-  function orderedServices(group) {
-    const order = serviceOrders[group.name];
-    const svcs = group.services || [];
-    if (!Array.isArray(order) || !order.length) return svcs;
-    const rank = (s) => {
-      const i = order.indexOf(s.name);
+  // Sort by a saved name order: saved names first (in their stored sequence),
+  // then anything new in its config order. Shared by groups and services.
+  function applySavedOrder(items, order) {
+    if (!Array.isArray(order) || !order.length) return items;
+    const rank = ({ name }) => {
+      const i = order.indexOf(name);
       return i === -1 ? Infinity : i;
     };
-    return [...svcs].sort((a, b) => rank(a) - rank(b));
+    return [...items].sort((a, b) => rank(a) - rank(b));
   }
+
+  const orderedServices = (group) =>
+    applySavedOrder(group.services || [], serviceOrders[group.name]);
 
   function saveServiceOrder(groupName, listEl) {
     serviceOrders[groupName] = [...listEl.querySelectorAll('.service')].map((s) => s.dataset.svcName);
@@ -967,13 +969,13 @@
       dot.title = label;
       dot.setAttribute('aria-label', label);
 
-      const uptimeEl = dot.parentElement && dot.parentElement.querySelector('.svc-uptime');
+      const uptimeEl = dot.parentElement?.querySelector('.svc-uptime');
       if (uptimeEl) {
-        uptimeEl.textContent = info && info.uptime24 != null ? `${info.uptime24}%` : '';
+        uptimeEl.textContent = info?.uptime24 != null ? `${info.uptime24}%` : '';
       }
 
-      const sparkEl = dot.parentElement && dot.parentElement.querySelector('.svc-spark');
-      if (sparkEl) renderSpark(sparkEl, info && info.spark);
+      const sparkEl = dot.parentElement?.querySelector('.svc-spark');
+      if (sparkEl) renderSpark(sparkEl, info?.spark);
     });
     updateSummary();
   }
@@ -1067,7 +1069,7 @@
       const host = a.querySelector('.service-stats');
       if (!host) return;
       const w = widgetMap[a.dataset.key];
-      const fields = w && Array.isArray(w.fields) ? w.fields : [];
+      const fields = Array.isArray(w?.fields) ? w.fields : [];
 
       if (!fields.length) {
         // Show the reason a widget produced nothing, so it's debuggable.
@@ -1247,21 +1249,7 @@
     store.setJSON(COLLAPSED_KEY, [...set]);
   }
 
-  function loadOrder() {
-    const o = store.getJSON(ORDER_KEY, null);
-    return Array.isArray(o) ? o : [];
-  }
-
-  // Saved order first (in its stored sequence), then any new groups in config order.
-  function orderedGroups(groups) {
-    const order = loadOrder();
-    if (!order.length) return groups;
-    const rank = (g) => {
-      const i = order.indexOf(g.name);
-      return i === -1 ? Infinity : i;
-    };
-    return [...groups].sort((a, b) => rank(a) - rank(b));
-  }
+  const orderedGroups = (groups) => applySavedOrder(groups, store.getJSON(ORDER_KEY, null));
 
   function saveOrder() {
     const names = [...document.querySelectorAll('#groups-container .group')].map((c) => c.dataset.group);
@@ -1612,7 +1600,7 @@
     const fileInput = overlay.querySelector('.backup-file');
     overlay.querySelector('.backup-import').addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', async () => {
-      const f = fileInput.files && fileInput.files[0];
+      const f = fileInput.files?.[0];
       if (!f) return;
       importBackupText(await f.text());
       fileInput.value = '';
@@ -1729,7 +1717,7 @@
     JSON.stringify({ _dashify_backup: 1, exported: new Date().toISOString(), data: collectBackup() }, null, 2);
 
   function setBackupMsg(text, cls = '') {
-    const el = settingsEl && settingsEl.querySelector('.backup-msg');
+    const el = settingsEl?.querySelector('.backup-msg');
     if (el) {
       el.textContent = text;
       el.className = 'cfg-msg backup-msg' + (cls ? ' ' + cls : '');
