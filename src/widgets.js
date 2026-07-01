@@ -5,10 +5,12 @@ import http from 'node:http';
 import https from 'node:https';
 
 // ── Low-level request helpers ─────────────────────────────────
-// Exported so other server modules (e.g. rss.js) reuse one HTTP path.
-// Pass maxRedirects > 0 to follow 3xx redirects (feeds commonly 301 from
-// http→https or to add `www`); it defaults to 0 so widget calls are unaffected.
-export function request(urlStr, { method = 'GET', headers = {}, body = null, timeoutMs = 5000, insecure = false, maxRedirects = 0 } = {}) {
+// Exported so other server modules (rss.js, the health checks in server.js)
+// reuse one HTTP path. Pass maxRedirects > 0 to follow 3xx redirects (feeds
+// commonly 301 from http→https or to add `www`); it defaults to 0 so widget
+// calls are unaffected. `discardBody` drains the response and resolves with
+// just the status/headers — for callers (health checks) that only need the code.
+export function request(urlStr, { method = 'GET', headers = {}, body = null, timeoutMs = 5000, insecure = false, maxRedirects = 0, discardBody = false } = {}) {
   return new Promise((resolve, reject) => {
     let url;
     try {
@@ -22,7 +24,12 @@ export function request(urlStr, { method = 'GET', headers = {}, body = null, tim
       if (maxRedirects > 0 && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume(); // drain so the socket is freed
         const next = new URL(res.headers.location, url).href;
-        resolve(request(next, { method, headers, body, timeoutMs, insecure, maxRedirects: maxRedirects - 1 }));
+        resolve(request(next, { method, headers, body, timeoutMs, insecure, maxRedirects: maxRedirects - 1, discardBody }));
+        return;
+      }
+      if (discardBody) {
+        res.resume();
+        resolve({ status: res.statusCode, headers: res.headers, body: '' });
         return;
       }
       let data = '';
@@ -92,6 +99,13 @@ function getPath(obj, path) {
 
 const trimSlash = (s) => String(s || '').replace(/\/+$/, '');
 
+// Request options carrying the widget's timeout/TLS settings, so every
+// provider call doesn't have to plumb them through by hand.
+const reqOpts = (w, extra = {}) => ({ timeoutMs: w.timeoutMs, insecure: w.insecure, ...extra });
+
+// The API key under whichever alias the config used.
+const apiKey = (w) => w.key || w.apikey || w.api_key || w.token || '';
+
 // ── Providers ─────────────────────────────────────────────────
 // Each provider receives the normalised widget config and returns
 // { fields: [{ label, value }] }. Throwing is fine — getWidget catches it.
@@ -103,29 +117,27 @@ async function piholeV6(base, w) {
   const password = w.key || w.password;
   let sid = null;
   if (password) {
-    const auth = await requestJson(`${base}/api/auth`, {
+    const auth = await requestJson(`${base}/api/auth`, reqOpts(w, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ password }),
-      timeoutMs: w.timeoutMs,
-      insecure: w.insecure,
-    });
+    }));
     // A JSON response from /api/auth means this *is* a v6 Pi-hole, so an invalid
     // session is a wrong password — surface it rather than falling back to v5.
-    if (auth.json && auth.json.session && auth.json.session.valid === false) {
+    if (auth.json?.session?.valid === false) {
       throw authError('pi-hole: wrong password (use a Pi-hole app password)');
     }
     sid = auth.json?.session?.sid || null;
   }
   const headers = sid ? { 'X-FTL-SID': sid } : {};
   const url = `${base}/api/stats/summary` + (sid ? `?sid=${encodeURIComponent(sid)}` : '');
-  const s = await requestJson(url, { headers, timeoutMs: w.timeoutMs, insecure: w.insecure });
+  const s = await requestJson(url, reqOpts(w, { headers }));
   if (s.status === 401) throw authError('pi-hole: unauthorized — check the password');
   const q = s.json?.queries;
   if (!q) throw new Error('no v6 data');
   // Politely end the session so we don't pile up sessions on the Pi-hole.
   if (sid) {
-    requestJson(`${base}/api/auth`, { method: 'DELETE', headers, timeoutMs: 2000, insecure: w.insecure }).catch(() => {});
+    requestJson(`${base}/api/auth`, reqOpts(w, { method: 'DELETE', headers, timeoutMs: 2000 })).catch(() => {});
   }
   return [
     { label: 'Queries', value: fmtNum(q.total) },
@@ -138,10 +150,7 @@ async function piholeV6(base, w) {
 async function piholeV5(base, w) {
   const token = w.key || w.password;
   const authParam = token ? `&auth=${encodeURIComponent(token)}` : '';
-  const r = await requestJson(`${base}/admin/api.php?summary${authParam}`, {
-    timeoutMs: w.timeoutMs,
-    insecure: w.insecure,
-  });
+  const r = await requestJson(`${base}/admin/api.php?summary${authParam}`, reqOpts(w));
   const j = r.json;
   if (!j || j.dns_queries_today == null) throw new Error('pi-hole: no data');
   return [
@@ -169,7 +178,7 @@ async function adguard(w) {
     const creds = `${w.username || ''}:${w.password || w.key || ''}`;
     headers.authorization = 'Basic ' + Buffer.from(creds).toString('base64');
   }
-  const r = await requestJson(`${base}/control/stats`, { headers, timeoutMs: w.timeoutMs, insecure: w.insecure });
+  const r = await requestJson(`${base}/control/stats`, reqOpts(w, { headers }));
   const j = r.json;
   if (!j || j.num_dns_queries == null) throw new Error('adguard: no data');
   const total = num(j.num_dns_queries);
@@ -188,20 +197,16 @@ async function npm(w) {
   const base = trimSlash(w.url);
   const identity = w.username || w.identity || w.email;
   const secret = w.password || w.secret || w.key;
-  const auth = await requestJson(`${base}/api/tokens`, {
+  const auth = await requestJson(`${base}/api/tokens`, reqOpts(w, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ identity, secret }),
-    timeoutMs: w.timeoutMs,
-    insecure: w.insecure,
-  });
+  }));
   const token = auth.json?.token;
   if (!token) throw new Error('npm: auth failed');
-  const r = await requestJson(`${base}/api/nginx/proxy-hosts`, {
+  const r = await requestJson(`${base}/api/nginx/proxy-hosts`, reqOpts(w, {
     headers: { authorization: `Bearer ${token}` },
-    timeoutMs: w.timeoutMs,
-    insecure: w.insecure,
-  });
+  }));
   const hosts = Array.isArray(r.json) ? r.json : [];
   const enabled = hosts.filter((h) => h.enabled).length;
   return {
@@ -215,11 +220,9 @@ async function npm(w) {
 
 async function portainer(w) {
   const base = trimSlash(w.url);
-  const r = await requestJson(`${base}/api/endpoints`, {
+  const r = await requestJson(`${base}/api/endpoints`, reqOpts(w, {
     headers: { 'X-API-Key': w.key || w.token || '' },
-    timeoutMs: w.timeoutMs,
-    insecure: w.insecure,
-  });
+  }));
   const endpoints = Array.isArray(r.json) ? r.json : [];
   let running = 0;
   let stopped = 0;
@@ -241,8 +244,7 @@ async function portainer(w) {
 // Sonarr / Radarr share the v3 API: library size, queue, and upcoming (7 days).
 async function arr(w, kind) {
   const base = trimSlash(w.url);
-  const key = w.key || w.apikey || w.api_key || w.token || '';
-  const opt = { headers: { 'X-Api-Key': key }, timeoutMs: w.timeoutMs, insecure: w.insecure };
+  const opt = reqOpts(w, { headers: { 'X-Api-Key': apiKey(w) } });
   const libPath = kind === 'radarr' ? 'movie' : 'series';
   const lib = await requestJson(`${base}/api/v3/${libPath}`, opt);
   if (lib.status === 401) throw new Error(`${kind}: unauthorized — check the API key`);
@@ -265,16 +267,14 @@ async function qbittorrent(w) {
   const base = trimSlash(w.url);
   const user = w.username || w.user || 'admin';
   const pass = w.password || w.pass || w.key || '';
-  const login = await request(`${base}/api/v2/auth/login`, {
+  const login = await request(`${base}/api/v2/auth/login`, reqOpts(w, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded', Referer: base },
     body: `username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`,
-    timeoutMs: w.timeoutMs,
-    insecure: w.insecure,
-  });
+  }));
   const cookie = (login.headers['set-cookie'] || []).map((c) => c.split(';')[0]).join('; ');
   if (!cookie && !/ok/i.test(login.body || '')) throw new Error('qbittorrent: login failed');
-  const opt = { headers: cookie ? { Cookie: cookie } : {}, timeoutMs: w.timeoutMs, insecure: w.insecure };
+  const opt = reqOpts(w, { headers: cookie ? { Cookie: cookie } : {} });
   const info = await requestJson(`${base}/api/v2/transfer/info`, opt);
   const torrents = await requestJson(`${base}/api/v2/torrents/info`, opt);
   const list = Array.isArray(torrents.json) ? torrents.json : [];
@@ -297,19 +297,13 @@ async function transmission(w) {
     headers.authorization = 'Basic ' + Buffer.from(`${w.username || ''}:${w.password || w.key || ''}`).toString('base64');
   }
   const body = JSON.stringify({ method: 'session-stats' });
-  let r = await request(rpc, { method: 'POST', headers, body, timeoutMs: w.timeoutMs, insecure: w.insecure });
+  let r = await requestJson(rpc, reqOpts(w, { method: 'POST', headers, body }));
   if (r.status === 409) {
     // Transmission hands back the required CSRF session id on the first 409.
     headers['x-transmission-session-id'] = r.headers['x-transmission-session-id'] || '';
-    r = await request(rpc, { method: 'POST', headers, body, timeoutMs: w.timeoutMs, insecure: w.insecure });
+    r = await requestJson(rpc, reqOpts(w, { method: 'POST', headers, body }));
   }
-  let j = null;
-  try {
-    j = JSON.parse(r.body);
-  } catch {
-    /* leave null */
-  }
-  const s = j?.arguments;
+  const s = r.json?.arguments;
   if (!s) throw new Error('transmission: no data');
   return {
     fields: [
@@ -324,12 +318,9 @@ async function transmission(w) {
 // Jellyfin / Emby: count sessions and how many are actively streaming.
 async function jellyfin(w) {
   const base = trimSlash(w.url);
-  const key = w.key || w.apikey || w.api_key || w.token || '';
-  const r = await requestJson(`${base}/Sessions`, {
-    headers: { 'X-Emby-Token': key },
-    timeoutMs: w.timeoutMs,
-    insecure: w.insecure,
-  });
+  const r = await requestJson(`${base}/Sessions`, reqOpts(w, {
+    headers: { 'X-Emby-Token': apiKey(w) },
+  }));
   if (r.status === 401) throw new Error('jellyfin: unauthorized — check the API key');
   const sessions = Array.isArray(r.json) ? r.json : [];
   return {
@@ -343,11 +334,7 @@ async function jellyfin(w) {
 async function plex(w) {
   const base = trimSlash(w.url);
   const token = w.token || w.key || w.apikey || '';
-  const r = await requestJson(`${base}/status/sessions?X-Plex-Token=${encodeURIComponent(token)}`, {
-    headers: { accept: 'application/json' },
-    timeoutMs: w.timeoutMs,
-    insecure: w.insecure,
-  });
+  const r = await requestJson(`${base}/status/sessions?X-Plex-Token=${encodeURIComponent(token)}`, reqOpts(w));
   if (r.status === 401) throw new Error('plex: unauthorized — check the token');
   const mc = r.json?.MediaContainer;
   if (!mc) throw new Error('plex: no data');
@@ -359,11 +346,7 @@ async function plex(w) {
 async function proxmox(w) {
   const base = trimSlash(w.url);
   const token = w.token || (w.tokenid && w.secret ? `${w.tokenid}=${w.secret}` : w.key || '');
-  const opt = {
-    headers: token ? { Authorization: `PVEAPIToken=${token}` } : {},
-    timeoutMs: w.timeoutMs,
-    insecure: w.insecure,
-  };
+  const opt = reqOpts(w, { headers: token ? { Authorization: `PVEAPIToken=${token}` } : {} });
   const nodes = await requestJson(`${base}/api2/json/nodes`, opt);
   if (nodes.status === 401) throw new Error('proxmox: unauthorized — check the API token');
   let cpu = 0;
@@ -395,7 +378,7 @@ async function uptimekuma(w) {
   const base = trimSlash(w.url);
   const key = w.key || w.apikey || w.token || w.password || '';
   const headers = key ? { authorization: 'Basic ' + Buffer.from(`:${key}`).toString('base64') } : {};
-  const r = await request(`${base}/metrics`, { headers, timeoutMs: w.timeoutMs, insecure: w.insecure });
+  const r = await request(`${base}/metrics`, reqOpts(w, { headers }));
   if (r.status === 401) throw new Error('uptime-kuma: unauthorized — check the API key');
   let up = 0;
   let total = 0;
@@ -426,7 +409,7 @@ async function glances(w) {
   const headers = pw
     ? { authorization: 'Basic ' + Buffer.from(`${w.username || 'glances'}:${pw}`).toString('base64') }
     : {};
-  const opt = { headers, timeoutMs: w.timeoutMs, insecure: w.insecure };
+  const opt = reqOpts(w, { headers });
 
   const versions = w.api != null ? [String(w.api)] : ['4', '3'];
   let ver = null;
@@ -465,12 +448,9 @@ async function glances(w) {
 // requests down by state. Auth is the API key in the X-Api-Key header.
 async function overseerr(w) {
   const base = trimSlash(w.url);
-  const key = w.key || w.apikey || w.api_key || w.token || '';
-  const r = await requestJson(`${base}/api/v1/request/count`, {
-    headers: { 'X-Api-Key': key },
-    timeoutMs: w.timeoutMs,
-    insecure: w.insecure,
-  });
+  const r = await requestJson(`${base}/api/v1/request/count`, reqOpts(w, {
+    headers: { 'X-Api-Key': apiKey(w) },
+  }));
   if (r.status === 401 || r.status === 403) throw new Error('overseerr: unauthorized — check the API key');
   const j = r.json;
   if (!j || j.total == null) throw new Error('overseerr: no data');
@@ -486,13 +466,11 @@ async function overseerr(w) {
 // Generic provider: fetch any JSON API and map fields by dot-path.
 // widget: { type: json, url, headers?, method?, body?, mappings: [{label, path, format?, suffix?}] }
 async function json(w) {
-  const r = await requestJson(w.url, {
+  const r = await requestJson(w.url, reqOpts(w, {
     method: w.method || 'GET',
     headers: w.headers || {},
     body: w.body ? (typeof w.body === 'string' ? w.body : JSON.stringify(w.body)) : null,
-    timeoutMs: w.timeoutMs,
-    insecure: w.insecure,
-  });
+  }));
   if (r.json == null) throw new Error('json: invalid response');
   const maps = w.mappings || w.fields || [];
   return {

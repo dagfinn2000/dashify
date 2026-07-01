@@ -2,11 +2,9 @@ import express from 'express';
 import { readFileSync, writeFileSync, watchFile, accessSync, constants } from 'node:fs';
 import { join, dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import http from 'node:http';
-import https from 'node:https';
 import net from 'node:net';
 import yaml from 'js-yaml';
-import { getWidget } from './widgets.js';
+import { getWidget, request } from './widgets.js';
 import { fetchFeed } from './rss.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -123,49 +121,9 @@ export function loadConfig(path = CONFIG_PATH) {
 let config = loadConfig();
 
 // ── Health checks ─────────────────────────────────────────────
-// Built on Node's http/https so we can disable TLS verification per
-// service (homelab boxes with self-signed certs) without extra deps.
-function requestOnce(urlStr, { method, timeoutMs, insecure }) {
-  return new Promise((resolvePromise, reject) => {
-    let url;
-    try {
-      url = new URL(urlStr);
-    } catch {
-      reject(new Error('invalid url'));
-      return;
-    }
-    const lib = url.protocol === 'https:' ? https : http;
-    const req = lib.request(
-      url,
-      {
-        method,
-        rejectUnauthorized: !insecure,
-        headers: { 'user-agent': 'Dashify/health-check', accept: '*/*' },
-      },
-      (res) => {
-        res.resume(); // drain so the socket can be freed
-        resolvePromise({ status: res.statusCode, location: res.headers.location });
-      },
-    );
-    req.setTimeout(timeoutMs, () => {
-      req.destroy(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }));
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
-
-async function probe(urlStr, opts, maxRedirects = 5) {
-  let current = urlStr;
-  for (let i = 0; ; i++) {
-    const { status, location } = await requestOnce(current, opts);
-    if (status >= 300 && status < 400 && location && i < maxRedirects) {
-      current = new URL(location, current).href;
-      continue;
-    }
-    return status;
-  }
-}
+// HTTP checks reuse the widgets' request helper (per-service TLS opt-out for
+// self-signed certs, timeout, redirect following) with the body discarded —
+// only the final status code matters.
 
 // A bare TCP connect — for services without an HTTP endpoint (SSH, databases,
 // game servers). Target comes from host/port, or is parsed out of `url`.
@@ -204,16 +162,21 @@ export async function checkService(service, defaults = config) {
   const mode = service.check === true ? 'http' : String(service.check).toLowerCase();
   const timeoutMs = (service.timeout ?? defaults.timeout ?? 5) * 1000;
   const started = performance.now();
+  const latency = () => Math.round(performance.now() - started);
+  const down = (e) => ({
+    status: 'down',
+    error: e.code === 'ETIMEDOUT' || /timeout/i.test(e.message || '') ? 'timeout' : 'unreachable',
+    latency: latency(),
+  });
 
   if (mode === 'tcp') {
     const { host, port } = tcpTarget(service);
     if (!host || !port) return { status: 'down', error: 'no host:port' };
     try {
       await tcpConnect(host, port, timeoutMs);
-      return { status: 'up', latency: Math.round(performance.now() - started) };
+      return { status: 'up', latency: latency() };
     } catch (e) {
-      const timedOut = e.code === 'ETIMEDOUT' || /timeout/i.test(e.message || '');
-      return { status: 'down', error: timedOut ? 'timeout' : 'unreachable', latency: Math.round(performance.now() - started) };
+      return down(e);
     }
   }
 
@@ -222,18 +185,18 @@ export async function checkService(service, defaults = config) {
     : service.url;
 
   try {
-    const code = await probe(target, {
+    const { status: code } = await request(target, {
       method: (service.method || 'GET').toUpperCase(),
+      headers: { 'user-agent': 'Dashify/health-check', accept: '*/*' },
       timeoutMs,
       insecure: service.allow_insecure === true,
+      maxRedirects: 5,
+      discardBody: true,
     });
-    const latency = Math.round(performance.now() - started);
     const ok = service.expect_status ? code === service.expect_status : code < 400;
-    return { status: ok ? 'up' : 'down', code, latency };
+    return { status: ok ? 'up' : 'down', code, latency: latency() };
   } catch (e) {
-    const latency = Math.round(performance.now() - started);
-    const timedOut = e.code === 'ETIMEDOUT' || /timeout/i.test(e.message || '');
-    return { status: 'down', error: timedOut ? 'timeout' : 'unreachable', latency };
+    return down(e);
   }
 }
 
@@ -273,7 +236,7 @@ function recordHistory(results) {
 function uptime24(key) {
   const arr = statusHistory.get(key);
   if (!arr || !arr.length) return null;
-  const up = arr.reduce((n, s) => n + (s.up ? 1 : 0), 0);
+  const up = arr.filter((s) => s.up).length;
   return Math.round((up / arr.length) * 1000) / 10; // one decimal place
 }
 
